@@ -43,20 +43,44 @@ create index if not exists applications_user_status_idx on public.applications(u
 create index if not exists actions_user_due_idx on public.actions(user_id, due_at);
 
 -- Validasi relasi lintas tabel agar user tidak menyisipkan ID data milik user lain.
-create or replace function public.assert_career_owner() returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function public.assert_requirement_owner() returns trigger language plpgsql security definer set search_path = public as $$
 begin
- if TG_TABLE_NAME = 'job_requirements' and not exists(select 1 from public.jobs where id = new.job_id and user_id = new.user_id) then raise exception 'Invalid job owner'; end if;
- if TG_TABLE_NAME = 'applications' then
-  if not exists(select 1 from public.jobs where id = new.job_id and user_id = new.user_id) then raise exception 'Invalid job owner'; end if;
-  if new.cv_version_id is not null and not exists(select 1 from public.cv_versions where id = new.cv_version_id and user_id = new.user_id) then raise exception 'Invalid CV owner'; end if;
- end if;
- if TG_TABLE_NAME in ('application_events','actions') and not exists(select 1 from public.applications where id = new.application_id and user_id = new.user_id) then raise exception 'Invalid application owner'; end if;
- return new;
+  if not exists(select 1 from public.jobs where id = new.job_id and user_id = new.user_id) then
+    raise exception 'Invalid job owner';
+  end if;
+  return new;
 end $$;
-create trigger check_requirement_owner before insert or update on public.job_requirements for each row execute function public.assert_career_owner();
-create trigger check_application_owner before insert or update on public.applications for each row execute function public.assert_career_owner();
-create trigger check_event_owner before insert or update on public.application_events for each row execute function public.assert_career_owner();
-create trigger check_action_owner before insert or update on public.actions for each row execute function public.assert_career_owner();
+
+create or replace function public.assert_application_owner() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not exists(select 1 from public.jobs where id = new.job_id and user_id = new.user_id) then
+    raise exception 'Invalid job owner';
+  end if;
+  if new.cv_version_id is not null and not exists(select 1 from public.cv_versions where id = new.cv_version_id and user_id = new.user_id) then
+    raise exception 'Invalid CV owner';
+  end if;
+  return new;
+end $$;
+
+create or replace function public.assert_app_child_owner() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not exists(select 1 from public.applications where id = new.application_id and user_id = new.user_id) then
+    raise exception 'Invalid application owner';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists check_requirement_owner on public.job_requirements;
+create trigger check_requirement_owner before insert or update on public.job_requirements for each row execute function public.assert_requirement_owner();
+
+drop trigger if exists check_application_owner on public.applications;
+create trigger check_application_owner before insert or update on public.applications for each row execute function public.assert_application_owner();
+
+drop trigger if exists check_event_owner on public.application_events;
+create trigger check_event_owner before insert or update on public.application_events for each row execute function public.assert_app_child_owner();
+
+drop trigger if exists check_action_owner on public.actions;
+create trigger check_action_owner before insert or update on public.actions for each row execute function public.assert_app_child_owner();
 
 do $$ declare t text; begin
  foreach t in array array['jobs','job_requirements','user_skills','cv_versions','applications','application_events','actions'] loop
