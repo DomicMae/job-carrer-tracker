@@ -175,6 +175,12 @@ export default function Home() {
   } | null>(null);
   const cvFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Edit & Preview CV Versions
+  const [editingCvId, setEditingCvId] = useState<string | null>(null);
+  const [editingCvLabel, setEditingCvLabel] = useState('');
+  const [editingCvText, setEditingCvText] = useState('');
+  const [previewCvId, setPreviewCvId] = useState<string | null>(null);
+
   // Application & Timeline Forms
   const [actionTitle, setActionTitle] = useState('');
   const [actionDue, setActionDue] = useState('');
@@ -1483,25 +1489,196 @@ export default function Home() {
             💾 Simpan Versi CV
           </button>
 
-          <div style={{ marginTop: '1.75rem' }}>
-            {cvs.map((c) => (
-              <div className="list-item" key={c.id}>
-                <div className="list-item-content">
-                  <b>{c.label}</b>
-                  <p>Dibuat pada: {new Date(c.created_at).toLocaleDateString('id-ID')}</p>
-                </div>
-                <button
-                  className="danger"
-                  onClick={async () => {
-                    await db.from('cv_versions').delete().eq('id', c.id);
-                    await refresh();
+          <div style={{ marginTop: '2rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>📚 Daftar Versi CV Tersimpan ({cvs.length})</h3>
+            {cvs.map((c) => {
+              const isEditing = editingCvId === c.id;
+              const isPreviewing = previewCvId === c.id;
+
+              return (
+                <div
+                  key={c.id}
+                  style={{
+                    background: 'var(--bg-surface-elevated)',
+                    border: isEditing ? '1px solid var(--brand-primary)' : '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '1.25rem',
+                    marginBottom: '1rem',
+                    transition: 'all 0.2s ease',
                   }}
                 >
-                  Hapus
-                </button>
-              </div>
-            ))}
-            {!cvs.length && <p>Belum ada versi CV tersimpan.</p>}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <b style={{ fontSize: '1.1rem', color: 'var(--text-main)' }}>{c.label}</b>
+                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        📅 Dibuat pada: {new Date(c.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        {' • '}
+                        {c.content_text.length} karakter
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                          onClick={() => setPreviewCvId(isPreviewing ? null : c.id)}
+                        >
+                          {isPreviewing ? '✕ Tutup Intip' : '👁️ Lihat Isi'}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className={isEditing ? 'secondary' : ''}
+                        style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                        onClick={() => {
+                          if (isEditing) {
+                            setEditingCvId(null);
+                          } else {
+                            setEditingCvId(c.id);
+                            setEditingCvLabel(c.label);
+                            setEditingCvText(c.content_text);
+                            setPreviewCvId(null);
+                          }
+                        }}
+                      >
+                        {isEditing ? '✕ Batal' : '✏️ Edit'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="danger"
+                        style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                        onClick={async () => {
+                          if (!confirm(`Hapus versi CV "${c.label}"?`)) return;
+                          if (!db) return;
+                          setBusy(true);
+                          const { error } = await db.from('cv_versions').delete().eq('id', c.id);
+                          setBusy(false);
+                          if (error) {
+                            setMessage('Gagal menghapus CV: ' + error.message);
+                          } else {
+                            setMessage('Versi CV berhasil dihapus.');
+                            if (editingCvId === c.id) setEditingCvId(null);
+                            if (previewCvId === c.id) setPreviewCvId(null);
+                            await refresh();
+                          }
+                        }}
+                      >
+                        🗑️ Hapus
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* PREVIEW VIEW */}
+                  {isPreviewing && !isEditing && (
+                    <div
+                      style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '0.9rem',
+                        lineHeight: 1.6,
+                        maxHeight: '350px',
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {c.content_text}
+                    </div>
+                  )}
+
+                  {/* INLINE EDIT FORM */}
+                  {isEditing && (
+                    <div
+                      style={{
+                        marginTop: '1.25rem',
+                        paddingTop: '1.25rem',
+                        borderTop: '1px solid var(--border-subtle)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1rem',
+                      }}
+                    >
+                      <label style={{ margin: 0 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.9rem' }}>
+                          Label / Nama Versi CV *
+                        </span>
+                        <input
+                          value={editingCvLabel}
+                          onChange={(e) => setEditingCvLabel(e.target.value)}
+                          placeholder="Contoh: CV Fullstack Developer (Revisi)"
+                        />
+                      </label>
+
+                      <label style={{ margin: 0 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.9rem' }}>
+                          Isi Lengkap Teks CV (Dapat Diedit Bebas) *
+                        </span>
+                        <textarea
+                          rows={12}
+                          value={editingCvText}
+                          onChange={(e) => setEditingCvText(e.target.value)}
+                          placeholder="Edit isi teks CV di sini..."
+                          style={{ minHeight: '220px', fontFamily: 'inherit' }}
+                        />
+                      </label>
+
+                      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => setEditingCvId(null)}
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            if (!db || !user) return;
+                            if (!editingCvLabel.trim()) {
+                              setMessage('Label CV tidak boleh kosong.');
+                              return;
+                            }
+                            if (editingCvText.trim().length < 30) {
+                              setMessage('Isi teks CV minimal 30 karakter.');
+                              return;
+                            }
+
+                            setBusy(true);
+                            const { error } = await db
+                              .from('cv_versions')
+                              .update({
+                                label: editingCvLabel.trim(),
+                                content_text: editingCvText.trim(),
+                              })
+                              .eq('id', c.id)
+                              .eq('user_id', user.id);
+                            setBusy(false);
+
+                            if (error) {
+                              setMessage('Gagal memperbarui CV: ' + error.message);
+                            } else {
+                              setMessage('✅ Versi CV berhasil diperbarui!');
+                              setEditingCvId(null);
+                              await refresh();
+                            }
+                          }}
+                        >
+                          💾 Simpan Perubahan
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {!cvs.length && <p style={{ color: 'var(--text-muted)' }}>Belum ada versi CV tersimpan.</p>}
           </div>
         </section>
       )}
