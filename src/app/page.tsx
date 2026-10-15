@@ -175,6 +175,7 @@ export default function Home() {
     previewUrl?: string;
   } | null>(null);
   const cvFileInputRef = useRef<HTMLInputElement | null>(null);
+  const cvFormRef = useRef<HTMLDivElement | null>(null);
 
   // Edit & Preview CV Versions
   const [editingCvId, setEditingCvId] = useState<string | null>(null);
@@ -412,6 +413,58 @@ export default function Home() {
       if (r.cv.cv_text) setCvText(r.cv.cv_text);
       setMessage('✅ Teks CV berhasil diekstrak dan diterjemahkan otomatis ke Bahasa Indonesia oleh AI!');
     }
+  }
+
+  function loadCvIntoForm(c: Cv) {
+    setEditingCvId(c.id);
+    setCvLabel(c.label);
+    setCvText(c.content_text);
+
+    const text = c.content_text;
+
+    // Ekstrak data pribadi jika ada
+    const nameMatch = text.match(/-\s*Nama:\s*([^\n\r]+)/i);
+    setCvFullName(nameMatch ? nameMatch[1].trim() : '');
+
+    const phoneMatch = text.match(/-\s*No\.?\s*Telp(?:\/WA)?:\s*([^\n\r]+)/i);
+    setCvPhone(phoneMatch ? phoneMatch[1].trim() : '');
+
+    const emailMatch = text.match(/-\s*Email:\s*([^\n\r]+)/i);
+    setCvEmail(emailMatch ? emailMatch[1].trim() : '');
+
+    // Ekstrak riwayat pengalaman kerja, pendidikan, proyek, organisasi
+    const expMatch = text.match(/PENGALAMAN KERJA:\s*\n([\s\S]*?)(?=\n\s*(?:PENDIDIKAN|PROYEK|ORGANISASI|DATA PRIBADI):|$)/i);
+    setCvExperience(expMatch ? expMatch[1].trim() : '');
+
+    const eduMatch = text.match(/PENDIDIKAN:\s*\n([\s\S]*?)(?=\n\s*(?:PENGALAMAN|PROYEK|ORGANISASI|DATA PRIBADI):|$)/i);
+    setCvEducation(eduMatch ? eduMatch[1].trim() : '');
+
+    const projMatch = text.match(/PROYEK(?:\s*&\s*PORTOFOLIO)?:\s*\n([\s\S]*?)(?=\n\s*(?:PENGALAMAN|PENDIDIKAN|ORGANISASI|DATA PRIBADI):|$)/i);
+    setCvProjects(projMatch ? projMatch[1].trim() : '');
+
+    const orgMatch = text.match(/ORGANISASI(?:\s*&\s*KEGIATAN|\s*&\s*VOLUNTEER)?:\s*\n([\s\S]*?)(?=\n\s*(?:PENGALAMAN|PENDIDIKAN|PROYEK|DATA PRIBADI):|$)/i);
+    setCvOrganization(orgMatch ? orgMatch[1].trim() : '');
+
+    setMessage(`✏️ Mode Edit Aktif: Data versi "${c.label}" telah dimuat ke form di bawah. Ubah input yang diperlukan lalu simpan.`);
+
+    setTimeout(() => {
+      cvFormRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 60);
+  }
+
+  function resetCvForm() {
+    setEditingCvId(null);
+    setCvLabel('CV Backend v1');
+    setCvFullName('');
+    setCvPhone('');
+    setCvEmail('');
+    setCvExperience('');
+    setCvEducation('');
+    setCvProjects('');
+    setCvOrganization('');
+    setCvText('');
+    setUploadedCvFile(null);
+    if (cvFileInputRef.current) cvFileInputRef.current.value = '';
   }
 
   // Support Paste (Ctrl + V) from clipboard anywhere on the page
@@ -1431,174 +1484,391 @@ export default function Home() {
             Jangan memasukkan identitas sensitif atau data rahasia perusahaan.
           </div>
 
-          {/* Upload File CV Box */}
-          <div
-            style={{
-              border: '2px dashed var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              padding: '1.5rem',
-              textAlign: 'center',
-              background: 'var(--bg-surface-elevated)',
-              marginBottom: '1.25rem',
-              cursor: 'pointer',
-            }}
-            onClick={() => cvFileInputRef.current?.click()}
-          >
-            <input
-              ref={cvFileInputRef}
-              type="file"
-              accept="application/pdf,image/*"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) processCvFile(file);
-              }}
-            />
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📄 / 📋 / 🖼️</div>
-            <b>Upload File CV (PDF / Gambar) atau Cukup Paste (Ctrl + V)</b>
-            <p style={{ fontSize: '0.85rem', marginTop: '0.35rem', color: 'var(--brand-primary-text)' }}>
-              ⚡ AI Gemini akan membaca seluruh teks CV dan mengisi form di bawah secara otomatis
-            </p>
-
-            {uploadedCvFile && (
-              <div
-                style={{
-                  marginTop: '1rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  padding: '0.5rem 1rem',
-                  borderRadius: 'var(--radius-sm)',
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {uploadedCvFile.previewUrl && (
-                  <img
-                    src={uploadedCvFile.previewUrl}
-                    alt="Preview"
-                    style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }}
-                  />
-                )}
-                <span style={{ color: '#34d399', fontSize: '0.9rem', fontWeight: 600 }}>
-                  📄 {uploadedCvFile.name}
-                </span>
-                <button
-                  className="danger"
-                  style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}
-                  onClick={() => {
-                    setUploadedCvFile(null);
-                    if (cvFileInputRef.current) cvFileInputRef.current.value = '';
-                  }}
-                >
-                  Hapus
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginBottom: '1.25rem' }}>
-            <button
-              disabled={busy || (!uploadedCvFile && cvText.trim().length < 15)}
-              onClick={extractCvManual}
-              style={{ width: '100%', padding: '0.85rem 1.25rem', fontSize: '1rem' }}
-            >
-              {busy ? '⏳ Sedang Memproses & Menerjemahkan CV...' : '✨ Ekstrak & Terjemahkan CV ke Bahasa Indonesia'}
-            </button>
-            <p style={{ margin: '0.35rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              💡 <em>Jika CV Anda berbahasa Inggris, AI akan otomatis menterjemahkan deskripsi pekerjaan, pendidikan, dan proyek ke Bahasa Indonesia tanpa mengubah nama atau istilah teknologi teknis.</em>
-            </p>
-          </div>
-
-          <label>
-            Label / Nama Versi CV
-            <input
-              placeholder="Contoh: CV Backend v1 (Anonim)"
-              value={cvLabel}
-              onChange={(e) => setCvLabel(e.target.value)}
-            />
-          </label>
-
-          <div className="formgrid" style={{ marginBottom: '1rem' }}>
-            <label>
-              Nama Lengkap
-              <input
-                placeholder="Contoh: Budi Santoso"
-                value={cvFullName}
-                onChange={(e) => setCvFullName(e.target.value)}
-              />
-            </label>
-            <label>
-              Nomor Telepon / WhatsApp
-              <input
-                placeholder="Contoh: 081234567890"
-                value={cvPhone}
-                onChange={(e) => setCvPhone(e.target.value)}
-              />
-            </label>
-            <label>
-              Gmail / Alamat Email
-              <input
-                type="email"
-                placeholder="Contoh: budi.santoso@gmail.com"
-                value={cvEmail}
-                onChange={(e) => setCvEmail(e.target.value)}
-              />
-            </label>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.25rem' }}>
-            <label>
-              🏢 Pengalaman Kerja (Work Experience)
-              <textarea
-                rows={8}
-                placeholder="Posisi - Nama Perusahaan (Periode)&#10;• Tanggung jawab & pencapaian 1&#10;• Tanggung jawab & pencapaian 2"
-                value={cvExperience}
-                onChange={(e) => setCvExperience(e.target.value)}
-              />
-            </label>
-
-            <label>
-              🎓 Riwayat Pendidikan (Education)
-              <textarea
-                rows={6}
-                placeholder="Nama Universitas (Periode)&#10;• Gelar, Jurusan | IPK&#10;• Aktivitas & Prestasi"
-                value={cvEducation}
-                onChange={(e) => setCvEducation(e.target.value)}
-              />
-            </label>
-
-            <label>
-              🚀 Proyek & Portofolio (Projects)
-              <textarea
-                rows={8}
-                placeholder="Nama Proyek (Periode)&#10;• Tech Stack: ...&#10;• Deskripsi & kontribusi"
-                value={cvProjects}
-                onChange={(e) => setCvProjects(e.target.value)}
-              />
-            </label>
-
-            <label>
-              👥 Organisasi & Kegiatan (Organization / Volunteer)
-              <textarea
-                rows={6}
-                placeholder="Nama Organisasi (Periode)&#10;• Peran / Jabatan&#10;• Kontribusi"
-                value={cvOrganization}
-                onChange={(e) => setCvOrganization(e.target.value)}
-              />
-            </label>
-          </div>
-
-          <label>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-              <span>📄 Teks Lengkap CV (Full CV Text)</span>
-              {(cvExperience || cvEducation || cvProjects || cvOrganization || cvFullName) && (
+          {/* 1. DAFTAR VERSI CV TERSIMPAN (DI ATAS) */}
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0 }}>📚 Daftar Versi CV Tersimpan ({cvs.length})</h3>
+              {editingCvId && (
                 <button
                   type="button"
                   className="secondary"
-                  style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
-                  onClick={() => {
+                  style={{ fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}
+                  onClick={resetCvForm}
+                >
+                  ✕ Batalkan Edit
+                </button>
+              )}
+            </div>
+
+            {cvs.map((c) => {
+              const isEditing = editingCvId === c.id;
+              const isPreviewing = previewCvId === c.id;
+
+              return (
+                <div
+                  key={c.id}
+                  style={{
+                    background: isEditing ? 'rgba(16, 185, 129, 0.08)' : 'var(--bg-surface-elevated)',
+                    border: isEditing ? '2px solid var(--brand-primary)' : '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '1.1rem 1.25rem',
+                    marginBottom: '0.85rem',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                        <b style={{ fontSize: '1.05rem', color: 'var(--text-main)' }}>{c.label}</b>
+                        {isEditing && (
+                          <span
+                            className="badge"
+                            style={{
+                              background: 'var(--brand-primary)',
+                              color: '#042419',
+                              fontWeight: 700,
+                              fontSize: '0.75rem',
+                              padding: '0.15rem 0.55rem',
+                            }}
+                          >
+                            ✏️ Sedang Diedit
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        📅 Dibuat pada: {new Date(c.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        {' • '}
+                        {c.content_text.length} karakter
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="secondary"
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.83rem' }}
+                        onClick={() => setPreviewCvId(isPreviewing ? null : c.id)}
+                      >
+                        {isPreviewing ? '✕ Tutup Intip' : '👁️ Lihat Isi'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className={isEditing ? 'secondary' : ''}
+                        style={{
+                          padding: '0.4rem 0.85rem',
+                          fontSize: '0.83rem',
+                          fontWeight: 600,
+                          borderColor: isEditing ? 'var(--accent-amber)' : undefined,
+                          color: isEditing ? '#fbbf24' : undefined,
+                        }}
+                        title="Klik untuk memuat dan mengedit seluruh data CV ini pada form di bawah"
+                        onClick={() => {
+                          if (isEditing) {
+                            resetCvForm();
+                          } else {
+                            loadCvIntoForm(c);
+                          }
+                        }}
+                      >
+                        {isEditing ? '✕ Batal Edit' : '✏️ Edit di Form ↓'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="danger"
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.83rem' }}
+                        onClick={async () => {
+                          if (!confirm(`Hapus versi CV "${c.label}"?`)) return;
+                          if (!db) return;
+                          setBusy(true);
+                          const { error } = await db.from('cv_versions').delete().eq('id', c.id);
+                          setBusy(false);
+                          if (error) {
+                            setMessage('Gagal menghapus CV: ' + error.message);
+                          } else {
+                            setMessage('Versi CV berhasil dihapus.');
+                            if (editingCvId === c.id) resetCvForm();
+                            if (previewCvId === c.id) setPreviewCvId(null);
+                            await refresh();
+                          }
+                        }}
+                      >
+                        🗑️ Hapus
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* PREVIEW VIEW */}
+                  {isPreviewing && (
+                    <div
+                      style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '0.9rem',
+                        lineHeight: 1.6,
+                        maxHeight: '320px',
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {c.content_text}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {!cvs.length && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                Belum ada versi CV tersimpan. Silakan isi form di bawah untuk membuat versi CV pertama Anda.
+              </p>
+            )}
+          </div>
+
+          <hr style={{ margin: '2rem 0 1.5rem', borderColor: 'var(--border-subtle)' }} />
+
+          {/* 2. FORM INPUT & EDIT CV (DI BAWAH) */}
+          <div ref={cvFormRef}>
+            {editingCvId ? (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid var(--brand-primary)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '0.85rem 1.25rem',
+                  marginBottom: '1.25rem',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                }}
+              >
+                <div>
+                  <b style={{ color: 'var(--brand-primary-text)', fontSize: '1rem' }}>
+                    ✏️ Mode Edit: Mengubah Versi CV "{cvLabel}"
+                  </b>
+                  <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    Ubah data pada kolom di bawah ini. Klik tombol <b>"💾 Perbarui Versi CV"</b> untuk memperbarui database.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="secondary"
+                  style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
+                  onClick={resetCvForm}
+                >
+                  ✕ Batal Edit (Buat Baru)
+                </button>
+              </div>
+            ) : (
+              <h3 style={{ marginBottom: '1rem' }}>➕ Buat / Tambah Versi CV Baru</h3>
+            )}
+
+            {/* Upload File CV Box */}
+            <div
+              style={{
+                border: '2px dashed var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: '1.5rem',
+                textAlign: 'center',
+                background: 'var(--bg-surface-elevated)',
+                marginBottom: '1.25rem',
+                cursor: 'pointer',
+              }}
+              onClick={() => cvFileInputRef.current?.click()}
+            >
+              <input
+                ref={cvFileInputRef}
+                type="file"
+                accept="application/pdf,image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) processCvFile(file);
+                }}
+              />
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📄 / 📋 / 🖼️</div>
+              <b>Upload File CV (PDF / Gambar) atau Cukup Paste (Ctrl + V)</b>
+              <p style={{ fontSize: '0.85rem', marginTop: '0.35rem', color: 'var(--brand-primary-text)' }}>
+                ⚡ AI Gemini akan membaca seluruh teks CV dan mengisi form di bawah secara otomatis
+              </p>
+
+              {uploadedCvFile && (
+                <div
+                  style={{
+                    marginTop: '1rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    padding: '0.5rem 1rem',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {uploadedCvFile.previewUrl && (
+                    <img
+                      src={uploadedCvFile.previewUrl}
+                      alt="Preview"
+                      style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }}
+                    />
+                  )}
+                  <span style={{ color: '#34d399', fontSize: '0.9rem', fontWeight: 600 }}>
+                    📄 {uploadedCvFile.name}
+                  </span>
+                  <button
+                    className="danger"
+                    style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}
+                    onClick={() => {
+                      setUploadedCvFile(null);
+                      if (cvFileInputRef.current) cvFileInputRef.current.value = '';
+                    }}
+                  >
+                    Hapus
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <button
+                disabled={busy || (!uploadedCvFile && cvText.trim().length < 15)}
+                onClick={extractCvManual}
+                style={{ width: '100%', padding: '0.85rem 1.25rem', fontSize: '1rem' }}
+              >
+                {busy ? '⏳ Sedang Memproses & Menerjemahkan CV...' : '✨ Ekstrak & Terjemahkan CV ke Bahasa Indonesia'}
+              </button>
+              <p style={{ margin: '0.35rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                💡 <em>Jika CV Anda berbahasa Inggris, AI akan otomatis menterjemahkan deskripsi pekerjaan, pendidikan, dan proyek ke Bahasa Indonesia tanpa mengubah nama atau istilah teknologi teknis.</em>
+              </p>
+            </div>
+
+            <label>
+              Label / Nama Versi CV *
+              <input
+                placeholder="Contoh: CV Backend v1 (Anonim)"
+                value={cvLabel}
+                onChange={(e) => setCvLabel(e.target.value)}
+              />
+            </label>
+
+            <div className="formgrid" style={{ marginBottom: '1rem' }}>
+              <label>
+                Nama Lengkap
+                <input
+                  placeholder="Contoh: Budi Santoso"
+                  value={cvFullName}
+                  onChange={(e) => setCvFullName(e.target.value)}
+                />
+              </label>
+              <label>
+                Nomor Telepon / WhatsApp
+                <input
+                  placeholder="Contoh: 081234567890"
+                  value={cvPhone}
+                  onChange={(e) => setCvPhone(e.target.value)}
+                />
+              </label>
+              <label>
+                Gmail / Alamat Email
+                <input
+                  type="email"
+                  placeholder="Contoh: budi.santoso@gmail.com"
+                  value={cvEmail}
+                  onChange={(e) => setCvEmail(e.target.value)}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.25rem' }}>
+              <label>
+                🏢 Pengalaman Kerja (Work Experience)
+                <textarea
+                  rows={8}
+                  placeholder="Posisi - Nama Perusahaan (Periode)&#10;• Tanggung jawab & pencapaian 1&#10;• Tanggung jawab & pencapaian 2"
+                  value={cvExperience}
+                  onChange={(e) => setCvExperience(e.target.value)}
+                />
+              </label>
+
+              <label>
+                🎓 Riwayat Pendidikan (Education)
+                <textarea
+                  rows={6}
+                  placeholder="Nama Universitas (Periode)&#10;• Gelar, Jurusan | IPK&#10;• Aktivitas & Prestasi"
+                  value={cvEducation}
+                  onChange={(e) => setCvEducation(e.target.value)}
+                />
+              </label>
+
+              <label>
+                🚀 Proyek & Portofolio (Projects)
+                <textarea
+                  rows={8}
+                  placeholder="Nama Proyek (Periode)&#10;• Tech Stack: ...&#10;• Deskripsi & kontribusi"
+                  value={cvProjects}
+                  onChange={(e) => setCvProjects(e.target.value)}
+                />
+              </label>
+
+              <label>
+                👥 Organisasi & Kegiatan (Organization / Volunteer)
+                <textarea
+                  rows={6}
+                  placeholder="Nama Organisasi (Periode)&#10;• Peran / Jabatan&#10;• Kontribusi"
+                  value={cvOrganization}
+                  onChange={(e) => setCvOrganization(e.target.value)}
+                />
+              </label>
+            </div>
+
+            <label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <span>📄 Teks Lengkap CV (Full CV Text)</span>
+                {(cvExperience || cvEducation || cvProjects || cvOrganization || cvFullName) && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
+                    onClick={() => {
+                      const sections = [];
+                      if (cvFullName || cvPhone || cvEmail) {
+                        sections.push(`DATA PRIBADI:\n${[
+                          cvFullName ? `- Nama: ${cvFullName}` : '',
+                          cvPhone ? `- No. Telp/WA: ${cvPhone}` : '',
+                          cvEmail ? `- Email: ${cvEmail}` : '',
+                        ].filter(Boolean).join('\n')}`);
+                      }
+                      if (cvExperience) sections.push(`PENGALAMAN KERJA:\n${cvExperience}`);
+                      if (cvEducation) sections.push(`PENDIDIKAN:\n${cvEducation}`);
+                      if (cvProjects) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects}`);
+                      if (cvOrganization) sections.push(`ORGANISASI:\n${cvOrganization}`);
+                      setCvText(sections.join('\n\n'));
+                    }}
+                  >
+                    🔄 Sinkronkan dari Kolom di Atas
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={10}
+                placeholder="Tempel isi teks CV dummy/anonim Anda di sini..."
+                value={cvText}
+                onChange={(e) => setCvText(e.target.value)}
+              />
+            </label>
+
+            <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                disabled={busy}
+                onClick={async () => {
+                  let finalText = cvText;
+                  if (!finalText.trim()) {
                     const sections = [];
                     if (cvFullName || cvPhone || cvEmail) {
                       sections.push(`DATA PRIBADI:\n${[
@@ -1611,252 +1881,65 @@ export default function Home() {
                     if (cvEducation) sections.push(`PENDIDIKAN:\n${cvEducation}`);
                     if (cvProjects) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects}`);
                     if (cvOrganization) sections.push(`ORGANISASI:\n${cvOrganization}`);
-                    setCvText(sections.join('\n\n'));
-                  }}
+                    finalText = sections.join('\n\n');
+                  }
+
+                  if (finalText.length < 30) {
+                    setMessage('Isi teks CV minimal 30 karakter.');
+                    return;
+                  }
+
+                  if (!cvLabel.trim()) {
+                    setMessage('Label CV tidak boleh kosong.');
+                    return;
+                  }
+
+                  if (editingCvId) {
+                    // UPDATE EXISTING CV
+                    if (!db || !user) return;
+                    setBusy(true);
+                    const { error } = await db
+                      .from('cv_versions')
+                      .update({
+                        label: cvLabel.trim(),
+                        content_text: finalText,
+                      })
+                      .eq('id', editingCvId)
+                      .eq('user_id', user.id);
+                    setBusy(false);
+
+                    if (error) {
+                      setMessage('Gagal memperbarui CV: ' + error.message);
+                    } else {
+                      setMessage(`✅ Versi CV "${cvLabel}" berhasil diperbarui!`);
+                      resetCvForm();
+                      await refresh();
+                    }
+                  } else {
+                    // CREATE NEW CV
+                    const ok = await save('cv_versions', {
+                      label: cvLabel.trim(),
+                      content_text: finalText,
+                    });
+                    if (ok) {
+                      resetCvForm();
+                    }
+                  }
+                }}
+              >
+                {editingCvId ? '💾 Perbarui Versi CV (Simpan Perubahan)' : '💾 Simpan Versi CV Baru'}
+              </button>
+
+              {editingCvId && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={resetCvForm}
                 >
-                  🔄 Sinkronkan dari Kolom di Atas
+                  ✕ Batalkan Edit
                 </button>
               )}
             </div>
-            <textarea
-              rows={10}
-              placeholder="Tempel isi teks CV dummy/anonim Anda di sini..."
-              value={cvText}
-              onChange={(e) => setCvText(e.target.value)}
-            />
-          </label>
-
-          <button
-            style={{ marginTop: '0.5rem' }}
-            onClick={async () => {
-              // Jika cvText masih kosong tapi field modular terisi, gabungkan otomatis
-              let finalText = cvText;
-              if (!finalText.trim()) {
-                const sections = [];
-                if (cvFullName || cvPhone || cvEmail) {
-                  sections.push(`DATA PRIBADI:\n${[
-                    cvFullName ? `- Nama: ${cvFullName}` : '',
-                    cvPhone ? `- No. Telp/WA: ${cvPhone}` : '',
-                    cvEmail ? `- Email: ${cvEmail}` : '',
-                  ].filter(Boolean).join('\n')}`);
-                }
-                if (cvExperience) sections.push(`PENGALAMAN KERJA:\n${cvExperience}`);
-                if (cvEducation) sections.push(`PENDIDIKAN:\n${cvEducation}`);
-                if (cvProjects) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects}`);
-                if (cvOrganization) sections.push(`ORGANISASI:\n${cvOrganization}`);
-                finalText = sections.join('\n\n');
-              }
-
-              if (finalText.length < 30) {
-                setMessage('Isi teks CV minimal 30 karakter.');
-                return;
-              }
-              const ok = await save('cv_versions', {
-                label: cvLabel,
-                content_text: finalText,
-              });
-              if (ok) {
-                setCvText('');
-                setCvExperience('');
-                setCvEducation('');
-                setCvProjects('');
-                setCvOrganization('');
-              }
-            }}
-          >
-            💾 Simpan Versi CV
-          </button>
-
-          <div style={{ marginTop: '2rem' }}>
-            <h3 style={{ marginBottom: '1rem' }}>📚 Daftar Versi CV Tersimpan ({cvs.length})</h3>
-            {cvs.map((c) => {
-              const isEditing = editingCvId === c.id;
-              const isPreviewing = previewCvId === c.id;
-
-              return (
-                <div
-                  key={c.id}
-                  style={{
-                    background: 'var(--bg-surface-elevated)',
-                    border: isEditing ? '1px solid var(--brand-primary)' : '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '1.25rem',
-                    marginBottom: '1rem',
-                    transition: 'all 0.2s ease',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                    <div style={{ flex: 1, minWidth: '220px' }}>
-                      <b style={{ fontSize: '1.1rem', color: 'var(--text-main)' }}>{c.label}</b>
-                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        📅 Dibuat pada: {new Date(c.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        {' • '}
-                        {c.content_text.length} karakter
-                      </p>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      {!isEditing && (
-                        <button
-                          type="button"
-                          className="secondary"
-                          style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
-                          onClick={() => setPreviewCvId(isPreviewing ? null : c.id)}
-                        >
-                          {isPreviewing ? '✕ Tutup Intip' : '👁️ Lihat Isi'}
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        className={isEditing ? 'secondary' : ''}
-                        style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
-                        onClick={() => {
-                          if (isEditing) {
-                            setEditingCvId(null);
-                          } else {
-                            setEditingCvId(c.id);
-                            setEditingCvLabel(c.label);
-                            setEditingCvText(c.content_text);
-                            setPreviewCvId(null);
-                          }
-                        }}
-                      >
-                        {isEditing ? '✕ Batal' : '✏️ Edit'}
-                      </button>
-
-                      <button
-                        type="button"
-                        className="danger"
-                        style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
-                        onClick={async () => {
-                          if (!confirm(`Hapus versi CV "${c.label}"?`)) return;
-                          if (!db) return;
-                          setBusy(true);
-                          const { error } = await db.from('cv_versions').delete().eq('id', c.id);
-                          setBusy(false);
-                          if (error) {
-                            setMessage('Gagal menghapus CV: ' + error.message);
-                          } else {
-                            setMessage('Versi CV berhasil dihapus.');
-                            if (editingCvId === c.id) setEditingCvId(null);
-                            if (previewCvId === c.id) setPreviewCvId(null);
-                            await refresh();
-                          }
-                        }}
-                      >
-                        🗑️ Hapus
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* PREVIEW VIEW */}
-                  {isPreviewing && !isEditing && (
-                    <div
-                      style={{
-                        marginTop: '1rem',
-                        padding: '1rem',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--border-subtle)',
-                        borderRadius: 'var(--radius-sm)',
-                        whiteSpace: 'pre-wrap',
-                        fontSize: '0.9rem',
-                        lineHeight: 1.6,
-                        maxHeight: '350px',
-                        overflowY: 'auto',
-                      }}
-                    >
-                      {c.content_text}
-                    </div>
-                  )}
-
-                  {/* INLINE EDIT FORM */}
-                  {isEditing && (
-                    <div
-                      style={{
-                        marginTop: '1.25rem',
-                        paddingTop: '1.25rem',
-                        borderTop: '1px solid var(--border-subtle)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '1rem',
-                      }}
-                    >
-                      <label style={{ margin: 0 }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.9rem' }}>
-                          Label / Nama Versi CV *
-                        </span>
-                        <input
-                          value={editingCvLabel}
-                          onChange={(e) => setEditingCvLabel(e.target.value)}
-                          placeholder="Contoh: CV Fullstack Developer (Revisi)"
-                        />
-                      </label>
-
-                      <label style={{ margin: 0 }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.9rem' }}>
-                          Isi Lengkap Teks CV (Dapat Diedit Bebas) *
-                        </span>
-                        <textarea
-                          rows={12}
-                          value={editingCvText}
-                          onChange={(e) => setEditingCvText(e.target.value)}
-                          placeholder="Edit isi teks CV di sini..."
-                          style={{ minHeight: '220px', fontFamily: 'inherit' }}
-                        />
-                      </label>
-
-                      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => setEditingCvId(null)}
-                        >
-                          Batal
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={async () => {
-                            if (!db || !user) return;
-                            if (!editingCvLabel.trim()) {
-                              setMessage('Label CV tidak boleh kosong.');
-                              return;
-                            }
-                            if (editingCvText.trim().length < 30) {
-                              setMessage('Isi teks CV minimal 30 karakter.');
-                              return;
-                            }
-
-                            setBusy(true);
-                            const { error } = await db
-                              .from('cv_versions')
-                              .update({
-                                label: editingCvLabel.trim(),
-                                content_text: editingCvText.trim(),
-                              })
-                              .eq('id', c.id)
-                              .eq('user_id', user.id);
-                            setBusy(false);
-
-                            if (error) {
-                              setMessage('Gagal memperbarui CV: ' + error.message);
-                            } else {
-                              setMessage('✅ Versi CV berhasil diperbarui!');
-                              setEditingCvId(null);
-                              await refresh();
-                            }
-                          }}
-                        >
-                          💾 Simpan Perubahan
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {!cvs.length && <p style={{ color: 'var(--text-muted)' }}>Belum ada versi CV tersimpan.</p>}
           </div>
         </section>
       )}
