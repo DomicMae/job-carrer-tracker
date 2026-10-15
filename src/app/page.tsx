@@ -127,6 +127,7 @@ export default function Home() {
 
   // Selection / Detail
   const [selectedJobId, setSelectedJobId] = useState('');
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [reqs, setReqs] = useState<Requirement[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
 
@@ -797,6 +798,178 @@ export default function Home() {
     setBusy(false);
   }
 
+  function resetJobForm() {
+    setEditingJobId(null);
+    setCompany('');
+    setRole('');
+    setUrl('');
+    setLocationVal('');
+    setExperienceVal('');
+    setDeadlineVal('');
+    setEmploymentType('Full-time');
+    setDescription('');
+    setUploadedFile(null);
+    setDraft(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function startEditJob(j: Job) {
+    setEditingJobId(j.id);
+    setCompany(j.company_name);
+    setRole(j.role_title);
+    setUrl(j.source_url || '');
+    setDescription(j.description_text || '');
+    setUploadedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // Format deadline YYYY-MM-DD
+    if (j.deadline_at) {
+      const d = new Date(j.deadline_at);
+      if (!isNaN(d.getTime())) {
+        setDeadlineVal(d.toISOString().split('T')[0]);
+      } else {
+        setDeadlineVal('');
+      }
+    } else {
+      setDeadlineVal('');
+    }
+
+    // Parse komponen lokasi (Lokasi Kota, Status Pekerjaan, Pengalaman)
+    if (j.location) {
+      let remaining = j.location;
+      let exp = '';
+      let emp = 'Full-time';
+
+      const expMatch = remaining.match(/Pengalaman:\s*([^·]+)/i);
+      if (expMatch) {
+        exp = expMatch[1].trim();
+        remaining = remaining.replace(expMatch[0], '');
+      }
+
+      for (const t of EMPLOYMENT_TYPES) {
+        const shortName = t.split('/')[0].trim();
+        const reg = new RegExp(`\\b${shortName}\\b`, 'i');
+        if (reg.test(remaining)) {
+          emp = t;
+          remaining = remaining.replace(reg, '');
+          break;
+        }
+      }
+
+      const loc = remaining
+        .split('·')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(', ');
+
+      setLocationVal(loc);
+      setEmploymentType(emp);
+      setExperienceVal(exp);
+    } else {
+      setLocationVal('');
+      setEmploymentType('Full-time');
+      setExperienceVal('');
+    }
+
+    // Ambil requirements yang tersimpan untuk lowongan ini
+    let jobReqs: { skill_name: string; kind: 'required' | 'preferred'; source_excerpt?: string }[] = [];
+    if (db) {
+      const { data } = await db.from('job_requirements').select('*').eq('job_id', j.id);
+      if (data && data.length > 0) {
+        jobReqs = data.map((r: any) => ({
+          skill_name: r.skill_name,
+          kind: r.kind === 'preferred' ? 'preferred' : 'required',
+          source_excerpt: r.source_excerpt || '',
+        }));
+      }
+    }
+
+    setDraft({
+      company_name: j.company_name,
+      role_title: j.role_title,
+      location: j.location,
+      description_text: j.description_text,
+      deadline_at: j.deadline_at,
+      salary_min: j.salary_min,
+      salary_max: j.salary_max,
+      currency: j.currency || 'IDR',
+      requirements: jobReqs,
+    });
+
+    setMessage(`✏️ Mode Edit: Mengubah data lowongan "${j.company_name} — ${j.role_title}".`);
+    setTab('new');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function updateJob() {
+    if (!editingJobId || !db || !user || !company.trim() || !role.trim()) {
+      setMessage('Nama Perusahaan dan Posisi wajib diisi.');
+      return;
+    }
+    setBusy(true);
+
+    const fullLocationParts = [];
+    if (locationVal.trim()) fullLocationParts.push(locationVal.trim());
+    if (employmentType) fullLocationParts.push(employmentType);
+    if (experienceVal.trim()) fullLocationParts.push(`Pengalaman: ${experienceVal.trim()}`);
+
+    const fullLocation = fullLocationParts.join(' · ');
+
+    const { error: jobError } = await db
+      .from('jobs')
+      .update({
+        company_name: company.trim(),
+        role_title: role.trim(),
+        source_url: url.trim() || null,
+        deadline_at: deadlineVal ? new Date(deadlineVal).toISOString() : null,
+        description_text: description || draft?.description_text || null,
+        location: fullLocation,
+        salary_min: draft?.salary_min ?? null,
+        salary_max: draft?.salary_max ?? null,
+        currency: draft?.currency ?? 'IDR',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', editingJobId)
+      .eq('user_id', user.id);
+
+    if (jobError) {
+      setMessage('Gagal memperbarui lowongan: ' + jobError.message);
+      setBusy(false);
+      return;
+    }
+
+    // Perbarui requirements jika ada
+    if (draft?.requirements) {
+      await db.from('job_requirements').delete().eq('job_id', editingJobId);
+
+      const validReqs = draft.requirements
+        .filter((x) => x.skill_name.trim())
+        .map((x) => ({
+          job_id: editingJobId,
+          user_id: user.id,
+          skill_name: x.skill_name.trim(),
+          kind: x.kind,
+          source_excerpt: x.source_excerpt || 'Diedit manual',
+          confirmed_by_user: true,
+        }));
+
+      if (validReqs.length) {
+        const { error: reqError } = await db.from('job_requirements').insert(validReqs);
+        if (reqError) {
+          setMessage('Lowongan diperbarui, namun beberapa persyaratan gagal: ' + reqError.message);
+        }
+      }
+    }
+
+    const updatedJobId = editingJobId;
+    setMessage(`✅ Lowongan "${company.trim()} — ${role.trim()}" berhasil diperbarui!`);
+    resetJobForm();
+    setSelectedJobId(updatedJobId);
+    setTab('jobs');
+    await refresh();
+    setBusy(false);
+  }
+
   async function createApplication() {
     if (!selectedJobId || !db || !user) return;
     const { data, error } = await db
@@ -1006,14 +1179,19 @@ export default function Home() {
         {[
           ['dashboard', '📊 Dashboard'],
           ['jobs', '💼 Daftar Lowongan'],
-          ['new', '➕ Tambah Lowongan'],
+          ['new', editingJobId ? '✏️ Edit Lowongan' : '➕ Tambah Lowongan'],
           ['skills', '⚡ Profil Skill'],
           ['cv', '📄 Versi CV'],
         ].map(([id, label]) => (
           <button
             key={id}
             className={tab === id ? 'active' : ''}
-            onClick={() => setTab(id as typeof tab)}
+            onClick={() => {
+              if (id === 'new' && tab !== 'new' && !editingJobId) {
+                resetJobForm();
+              }
+              setTab(id as typeof tab);
+            }}
           >
             {label}
           </button>
@@ -1256,6 +1434,22 @@ export default function Home() {
                     Lihat Detail →
                   </button>
 
+                  <button
+                    type="button"
+                    className="secondary"
+                    style={{
+                      padding: '0.5rem 0.85rem',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      borderColor: 'var(--brand-primary)',
+                      color: 'var(--brand-primary-text)',
+                    }}
+                    title="Klik untuk mengedit data lowongan ini"
+                    onClick={() => startEditJob(j)}
+                  >
+                    ✏️ Edit
+                  </button>
+
                   {isSoftDeleted ? (
                     <button
                       type="button"
@@ -1311,10 +1505,48 @@ export default function Home() {
       {/* 3. TAMBAH LOWONGAN & AI MULTIMODAL DRAFT */}
       {tab === 'new' && (
         <section className="card">
-          <h2>Tambah Lowongan Baru</h2>
+          {editingJobId ? (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid var(--brand-primary)',
+                borderRadius: 'var(--radius-md)',
+                padding: '0.85rem 1.25rem',
+                marginBottom: '1.25rem',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+              }}
+            >
+              <div>
+                <b style={{ color: 'var(--brand-primary-text)', fontSize: '1rem' }}>
+                  ✏️ Mode Edit: Mengubah Data Lowongan "{company || 'Lowongan'}"
+                </b>
+                <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  Perbarui informasi lowongan di bawah ini, lalu klik tombol <b>"💾 Perbarui Lowongan"</b>.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
+                onClick={() => {
+                  resetJobForm();
+                  setTab('jobs');
+                }}
+              >
+                ✕ Batal Edit (Kembali ke Daftar)
+              </button>
+            </div>
+          ) : (
+            <h2>Tambah Lowongan Baru</h2>
+          )}
           <p style={{ marginBottom: '1.25rem' }}>
-            Anda dapat <b>mengunggah file/gambar (screenshot) lowongan</b> atau <b>menempel teks job description</b>. 
-            AI Gemini akan membaca nama perusahaan, posisi, status kerja, lokasi, link referensi, pengalaman, tanggal deadline, serta deskripsi lengkap dan skill secara otomatis.
+            {editingJobId
+              ? 'Anda dapat memperbarui teks job description, detail perusahaan, posisi, lokasi, tanggal deadline, persyaratan skill, atau menggunakan Gemini AI untuk re-analisis.'
+              : 'Anda dapat mengunggah file/gambar (screenshot) lowongan atau menempel teks job description. AI Gemini akan membaca nama perusahaan, posisi, status kerja, lokasi, link referensi, pengalaman, tanggal deadline, serta deskripsi lengkap dan skill secara otomatis.'}
           </p>
 
           {/* Upload File / Gambar Box */}
@@ -1542,9 +1774,23 @@ export default function Home() {
           )}
 
           <hr style={{ margin: '1.75rem 0', borderColor: 'var(--border-subtle)' }} />
-          <button disabled={busy} onClick={createJob}>
-            💾 Simpan Lowongan
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button disabled={busy} onClick={editingJobId ? updateJob : createJob}>
+              {editingJobId ? '💾 Perbarui Lowongan (Simpan Perubahan)' : '💾 Simpan Lowongan'}
+            </button>
+            {editingJobId && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  resetJobForm();
+                  setTab('jobs');
+                }}
+              >
+                ✕ Batalkan Edit
+              </button>
+            )}
+          </div>
         </section>
       )}
 
@@ -2266,16 +2512,25 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              {currentJob.source_url && (
-                <a
-                  href={currentJob.source_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn secondary"
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => startEditJob(currentJob)}
                 >
-                  Kunjungi Link Sumber ↗
-                </a>
-              )}
+                  ✏️ Edit Lowongan
+                </button>
+                {currentJob.source_url && (
+                  <a
+                    href={currentJob.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn secondary"
+                  >
+                    Kunjungi Link Sumber ↗
+                  </a>
+                )}
+              </div>
             </div>
 
             {currentJob.description_text && (
