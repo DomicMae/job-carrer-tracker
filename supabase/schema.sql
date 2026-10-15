@@ -8,6 +8,7 @@ create table if not exists public.jobs (
  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 alter table public.jobs add column if not exists is_deleted boolean not null default false;
+notify pgrst, 'reload schema';
 create table if not exists public.job_requirements (
  id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
  job_id uuid not null references public.jobs(id) on delete cascade,
