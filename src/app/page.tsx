@@ -415,37 +415,185 @@ export default function Home() {
     }
   }
 
+  function parseCvFull(text: string) {
+    if (!text) {
+      return { fullName: '', phone: '', email: '', experience: '', education: '', projects: '', organization: '' };
+    }
+
+    let fullName = '';
+    let phone = '';
+    let email = '';
+    let experience = '';
+    let education = '';
+    let projects = '';
+    let organization = '';
+
+    // 1. Ekstrak Email
+    const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (emailMatch) email = emailMatch[0].trim();
+
+    // 2. Ekstrak Nomor Telepon / WhatsApp (mendukung format internasional, awalan 08, tanda kurung area)
+    const phoneMatch =
+      text.match(/(?:No\.?\s*(?:Telp|HP|Telepon|Handphone|WA)(?:\/WA)?|WhatsApp|Phone|Mobile|Contact|Telepon|Telp|WA)\s*[:=]\s*([+()0-9 \t-]{8,24})/i) ||
+      text.match(/(?:\+?62|08)[0-9 \t\-\(\)\.]{7,18}/) ||
+      text.match(/\+?[0-9]{2,3}[-\s]?[0-9]{3,4}[-\s]?[0-9]{3,5}/);
+
+    if (phoneMatch) {
+      const rawPhone = (phoneMatch[1] || phoneMatch[0]).trim();
+      phone = rawPhone.replace(/^[^\d+(]+|[^\d)]+$/g, '').trim();
+    }
+
+    // 3. Ekstrak Nama Lengkap
+    // Cek dulu label nama eksplisit
+    const nameLabelMatch = text.match(/(?:^|[\n\r]|[-*#_>\s])+(?:Nama(?:\s*Lengkap)?|Full\s*Name|Candidate\s*Name)\s*[:=]\s*([^\n\r]+)/i);
+    if (nameLabelMatch) {
+      fullName = nameLabelMatch[1].replace(/^[*\s#_:\-•]+|[*\s#_:\-•]+$/g, '').trim();
+    }
+
+    const lines = text.split(/\r?\n/);
+
+    // Jika nama belum ditemukan via label, cari dari baris-baris awal sebelum section besar
+    if (!fullName) {
+      for (let i = 0; i < Math.min(lines.length, 12); i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        if (line.includes('@') || /https?:\/\//i.test(line)) continue;
+        if (/(?:curriculum\s*vitae|\bcv\b|resume|biodata|profil|profile|portofolio|portfolio)/i.test(line)) {
+          const subName = line.match(/(?:cv|resume|curriculum vitae)\s*[-:–—|]\s*([a-zA-Z\s'.]+)$/i);
+          if (subName && subName[1].trim().length >= 3 && subName[1].trim().length <= 40) {
+            fullName = subName[1].trim();
+            break;
+          }
+          continue;
+        }
+        const cleaned = line.replace(/^[#*_\s\-•>:]+|[#*_\s\-•>:]+$/g, '').trim();
+        if (cleaned.length >= 3 && cleaned.length <= 45 && !cleaned.includes(':') && !/[0-9]{4,}/.test(cleaned)) {
+          if (!/^(?:software\s*engineer|developer|frontend|backend|fullstack|data\s*analyst|manager|designer|programmer)/i.test(cleaned)) {
+            fullName = cleaned;
+            break;
+          }
+        }
+      }
+    }
+
+    // 4. Deteksi Section Headings Line by Line
+    type Sec = 'none' | 'exp' | 'edu' | 'proj' | 'org' | 'other';
+    let cur: Sec = 'none';
+    const expLines: string[] = [];
+    const eduLines: string[] = [];
+    const projLines: string[] = [];
+    const orgLines: string[] = [];
+
+    function normalizeHeading(line: string) {
+      return line
+        .replace(/^[#*_\s\-•>:0-9.)]+|[#*_\s\-•>:]+$/g, '')
+        .replace(/[^\w\s()&/-]/g, ' ')
+        .trim()
+        .toUpperCase();
+    }
+
+    function isHeadingLine(trimmed: string) {
+      if (/[.,;]$/.test(trimmed)) return false;
+      if (/^[-*•+]\s+[a-z0-9]/i.test(trimmed) && !/^\*\*.*\*\*:?$/.test(trimmed)) return false;
+      if (trimmed.length > 70) return false;
+
+      if (/^#{1,6}\s+/.test(trimmed)) return true;
+      if (/^\*\*[^*]+\*\*:?$/.test(trimmed) || /^__[^_]+__:?$/.test(trimmed)) return true;
+      if (/^[0-9]+[.)]\s+[A-Za-z]/i.test(trimmed)) return true;
+      if (/:\s*$/.test(trimmed) && trimmed.length < 50) return true;
+      if (/^[A-Z0-9\s&/()\-–—]{3,50}$/.test(trimmed)) return true;
+      if (/^(?:Pengalaman(?:\s*Kerja|\s*Profesional)?|Riwayat\s*(?:Kerja|Pendidikan)|Pendidikan|Proyek(?:\s*&\s*Portofolio)?|Portofolio|Projects?|Education|Experience|Organisasi|Volunteer)(?:\s*\([^)]+\))?$/i.test(trimmed)) return true;
+
+      return false;
+    }
+
+    function isExperienceHeading(h: string) {
+      if (/ORGANISASI|ORGANIZATION|VOLUNTEER/i.test(h)) return false;
+      return /\b(?:PENGALAMAN(?:\s*KERJA|\s*PROFESIONAL|\s*BEKERJA)?|RIWAYAT\s*KERJA|WORK\s*EXPERIENCE|PROFESSIONAL\s*EXPERIENCE|EXPERIENCE|EMPLOYMENT(?:\s*HISTORY)?)\b/i.test(h);
+    }
+
+    function isEducationHeading(h: string) {
+      return /\b(?:PENDIDIKAN|RIWAYAT\s*PENDIDIKAN|LATAR\s*BELAKANG\s*PENDIDIKAN|EDUCATION|ACADEMIC(?:\s*BACKGROUND)?)\b/i.test(h);
+    }
+
+    function isProjectHeading(h: string) {
+      return /\b(?:PROYEK(?:\s*&\s*PORTOFOLIO)?|PORTFOLIO|PORTOFOLIO|PROJECTS(?:\s*&\s*PORTFOLIO)?|KEY\s*PROJECTS|PROJECT\s*EXPERIENCE)\b/i.test(h);
+    }
+
+    function isOrgHeading(h: string) {
+      return /\b(?:ORGANISASI|PENGALAMAN\s*ORGANISASI|ORGANIZATION|VOLUNTEER|LEADERSHIP|AKTIVITAS\s*ORGANISASI)\b/i.test(h);
+    }
+
+    function isOtherHeading(h: string) {
+      return /\b(?:DATA\s*PRIBADI|INFORMASI\s*PRIBADI|INFORMASI\s*KONTAK|PERSONAL\s*INFO|CONTACT|RINGKASAN|SUMMARY|TENTANG\s*SAYA|ABOUT\s*ME|KEAHLIAN|SKILLS|TECHNICAL\s*SKILLS|SERTIFIKASI|CERTIFICATIONS|BAHASA|LANGUAGES)\b/i.test(h);
+    }
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (cur === 'exp') expLines.push('');
+        else if (cur === 'edu') eduLines.push('');
+        else if (cur === 'proj') projLines.push('');
+        else if (cur === 'org') orgLines.push('');
+        continue;
+      }
+
+      if (isHeadingLine(trimmed)) {
+        const norm = normalizeHeading(trimmed);
+        if (isOrgHeading(norm)) { cur = 'org'; continue; }
+        if (isExperienceHeading(norm)) { cur = 'exp'; continue; }
+        if (isEducationHeading(norm)) { cur = 'edu'; continue; }
+        if (isProjectHeading(norm)) { cur = 'proj'; continue; }
+        if (isOtherHeading(norm)) { cur = 'other'; continue; }
+      }
+
+      if (cur === 'exp') expLines.push(line);
+      else if (cur === 'edu') eduLines.push(line);
+      else if (cur === 'proj') projLines.push(line);
+      else if (cur === 'org') orgLines.push(line);
+    }
+
+    experience = expLines.join('\n').trim();
+    education = eduLines.join('\n').trim();
+    projects = projLines.join('\n').trim();
+    organization = orgLines.join('\n').trim();
+
+    // Fallback block regex jika line-by-line heading belum match
+    if (!experience) {
+      const m = text.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:PENGALAMAN(?:\s*KERJA|\s*PROFESIONAL|\s*BEKERJA)?|WORK\s*EXPERIENCE|EXPERIENCE)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENDIDIKAN|EDUCATION|PROYEK|PROJECTS|ORGANISASI|ORGANIZATION|KEAHLIAN|SKILLS|DATA\s*PRIBADI)|$)/i);
+      if (m) experience = m[1].trim();
+    }
+    if (!education) {
+      const m = text.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:PENDIDIKAN|EDUCATION|ACADEMIC)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENGALAMAN|EXPERIENCE|PROYEK|PROJECTS|ORGANISASI|ORGANIZATION|KEAHLIAN|SKILLS|DATA\s*PRIBADI)|$)/i);
+      if (m) education = m[1].trim();
+    }
+    if (!projects) {
+      const m = text.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:PROYEK(?:\s*&\s*PORTOFOLIO)?|PROJECTS|PORTOFOLIO|PORTFOLIO)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENGALAMAN|EXPERIENCE|PENDIDIKAN|EDUCATION|ORGANISASI|ORGANIZATION|KEAHLIAN|SKILLS|DATA\s*PRIBADI)|$)/i);
+      if (m) projects = m[1].trim();
+    }
+    if (!organization) {
+      const m = text.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:ORGANISASI|ORGANIZATION|VOLUNTEER)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENGALAMAN|EXPERIENCE|PENDIDIKAN|EDUCATION|PROYEK|PROJECTS|KEAHLIAN|SKILLS|DATA\s*PRIBADI)|$)/i);
+      if (m) organization = m[1].trim();
+    }
+
+    return { fullName, phone, email, experience, education, projects, organization };
+  }
+
   function loadCvIntoForm(c: Cv) {
     setEditingCvId(c.id);
     setCvLabel(c.label);
     setCvText(c.content_text);
 
-    const text = c.content_text;
+    const parsed = parseCvFull(c.content_text);
+    setCvFullName(parsed.fullName);
+    setCvPhone(parsed.phone);
+    setCvEmail(parsed.email);
+    setCvExperience(parsed.experience);
+    setCvEducation(parsed.education);
+    setCvProjects(parsed.projects);
+    setCvOrganization(parsed.organization);
 
-    // Ekstrak data pribadi jika ada
-    const nameMatch = text.match(/-\s*Nama:\s*([^\n\r]+)/i);
-    setCvFullName(nameMatch ? nameMatch[1].trim() : '');
-
-    const phoneMatch = text.match(/-\s*No\.?\s*Telp(?:\/WA)?:\s*([^\n\r]+)/i);
-    setCvPhone(phoneMatch ? phoneMatch[1].trim() : '');
-
-    const emailMatch = text.match(/-\s*Email:\s*([^\n\r]+)/i);
-    setCvEmail(emailMatch ? emailMatch[1].trim() : '');
-
-    // Ekstrak riwayat pengalaman kerja, pendidikan, proyek, organisasi
-    const expMatch = text.match(/PENGALAMAN KERJA:\s*\n([\s\S]*?)(?=\n\s*(?:PENDIDIKAN|PROYEK|ORGANISASI|DATA PRIBADI):|$)/i);
-    setCvExperience(expMatch ? expMatch[1].trim() : '');
-
-    const eduMatch = text.match(/PENDIDIKAN:\s*\n([\s\S]*?)(?=\n\s*(?:PENGALAMAN|PROYEK|ORGANISASI|DATA PRIBADI):|$)/i);
-    setCvEducation(eduMatch ? eduMatch[1].trim() : '');
-
-    const projMatch = text.match(/PROYEK(?:\s*&\s*PORTOFOLIO)?:\s*\n([\s\S]*?)(?=\n\s*(?:PENGALAMAN|PENDIDIKAN|ORGANISASI|DATA PRIBADI):|$)/i);
-    setCvProjects(projMatch ? projMatch[1].trim() : '');
-
-    const orgMatch = text.match(/ORGANISASI(?:\s*&\s*KEGIATAN|\s*&\s*VOLUNTEER)?:\s*\n([\s\S]*?)(?=\n\s*(?:PENGALAMAN|PENDIDIKAN|PROYEK|DATA PRIBADI):|$)/i);
-    setCvOrganization(orgMatch ? orgMatch[1].trim() : '');
-
-    setMessage(`✏️ Mode Edit Aktif: Data versi "${c.label}" telah dimuat ke form di bawah. Ubah input yang diperlukan lalu simpan.`);
+    setMessage(`✏️ Mode Edit Aktif: Versi "${c.label}" berhasil dimuat ke seluruh kolom form.`);
 
     setTimeout(() => {
       cvFormRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1655,14 +1803,37 @@ export default function Home() {
                     Ubah data pada kolom di bawah ini. Klik tombol <b>"💾 Perbarui Versi CV"</b> untuk memperbarui database.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="secondary"
-                  style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
-                  onClick={resetCvForm}
-                >
-                  ✕ Batal Edit (Buat Baru)
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {cvText.trim().length >= 20 && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem', borderColor: 'var(--brand-primary)', color: 'var(--brand-primary)' }}
+                      title="Ekstrak ulang data dari teks CV ke seluruh kolom input di bawah"
+                      onClick={() => {
+                        const parsed = parseCvFull(cvText);
+                        if (parsed.fullName) setCvFullName(parsed.fullName);
+                        if (parsed.phone) setCvPhone(parsed.phone);
+                        if (parsed.email) setCvEmail(parsed.email);
+                        if (parsed.experience) setCvExperience(parsed.experience);
+                        if (parsed.education) setCvEducation(parsed.education);
+                        if (parsed.projects) setCvProjects(parsed.projects);
+                        if (parsed.organization) setCvOrganization(parsed.organization);
+                        setMessage('⚡ Seluruh kolom berhasil dimuat dari teks CV!');
+                      }}
+                    >
+                      ⚡ Ekstrak ke Seluruh Kolom
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="secondary"
+                    style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
+                    onClick={resetCvForm}
+                  >
+                    ✕ Batal Edit (Buat Baru)
+                  </button>
+                </div>
               </div>
             ) : (
               <h3 style={{ marginBottom: '1rem' }}>➕ Buat / Tambah Versi CV Baru</h3>
@@ -1828,32 +1999,55 @@ export default function Home() {
             </div>
 
             <label>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <span>📄 Teks Lengkap CV (Full CV Text)</span>
-                {(cvExperience || cvEducation || cvProjects || cvOrganization || cvFullName) && (
-                  <button
-                    type="button"
-                    className="secondary"
-                    style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
-                    onClick={() => {
-                      const sections = [];
-                      if (cvFullName || cvPhone || cvEmail) {
-                        sections.push(`DATA PRIBADI:\n${[
-                          cvFullName ? `- Nama: ${cvFullName}` : '',
-                          cvPhone ? `- No. Telp/WA: ${cvPhone}` : '',
-                          cvEmail ? `- Email: ${cvEmail}` : '',
-                        ].filter(Boolean).join('\n')}`);
-                      }
-                      if (cvExperience) sections.push(`PENGALAMAN KERJA:\n${cvExperience}`);
-                      if (cvEducation) sections.push(`PENDIDIKAN:\n${cvEducation}`);
-                      if (cvProjects) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects}`);
-                      if (cvOrganization) sections.push(`ORGANISASI:\n${cvOrganization}`);
-                      setCvText(sections.join('\n\n'));
-                    }}
-                  >
-                    🔄 Sinkronkan dari Kolom di Atas
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  {cvText.trim().length >= 30 && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
+                      title="Ekstrak data nama, kontak, pengalaman, dan pendidikan dari teks di bawah ke kolom form di atas"
+                      onClick={() => {
+                        const parsed = parseCvFull(cvText);
+                        if (parsed.fullName) setCvFullName(parsed.fullName);
+                        if (parsed.phone) setCvPhone(parsed.phone);
+                        if (parsed.email) setCvEmail(parsed.email);
+                        if (parsed.experience) setCvExperience(parsed.experience);
+                        if (parsed.education) setCvEducation(parsed.education);
+                        if (parsed.projects) setCvProjects(parsed.projects);
+                        if (parsed.organization) setCvOrganization(parsed.organization);
+                        setMessage('⚡ Seluruh data berhasil diparsing dan disebar ke kolom-kolom di atas!');
+                      }}
+                    >
+                      ⚡ Ekstrak ke Kolom di Atas
+                    </button>
+                  )}
+                  {(cvExperience || cvEducation || cvProjects || cvOrganization || cvFullName) && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
+                      onClick={() => {
+                        const sections = [];
+                        if (cvFullName || cvPhone || cvEmail) {
+                          sections.push(`DATA PRIBADI:\n${[
+                            cvFullName ? `- Nama: ${cvFullName}` : '',
+                            cvPhone ? `- No. Telp/WA: ${cvPhone}` : '',
+                            cvEmail ? `- Email: ${cvEmail}` : '',
+                          ].filter(Boolean).join('\n')}`);
+                        }
+                        if (cvExperience) sections.push(`PENGALAMAN KERJA:\n${cvExperience}`);
+                        if (cvEducation) sections.push(`PENDIDIKAN:\n${cvEducation}`);
+                        if (cvProjects) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects}`);
+                        if (cvOrganization) sections.push(`ORGANISASI:\n${cvOrganization}`);
+                        setCvText(sections.join('\n\n'));
+                      }}
+                    >
+                      🔄 Sinkronkan ke Teks Lengkap
+                    </button>
+                  )}
+                </div>
               </div>
               <textarea
                 rows={10}
@@ -1868,7 +2062,10 @@ export default function Home() {
                 disabled={busy}
                 onClick={async () => {
                   let finalText = cvText;
-                  if (!finalText.trim()) {
+                  const hasModularFields = !!(cvFullName || cvPhone || cvEmail || cvExperience || cvEducation || cvProjects || cvOrganization);
+
+                  // Prioritaskan konten dari kolom-kolom modular jika diisi/diedit oleh pengguna
+                  if (hasModularFields) {
                     const sections = [];
                     if (cvFullName || cvPhone || cvEmail) {
                       sections.push(`DATA PRIBADI:\n${[
@@ -1877,11 +2074,27 @@ export default function Home() {
                         cvEmail ? `- Email: ${cvEmail}` : '',
                       ].filter(Boolean).join('\n')}`);
                     }
-                    if (cvExperience) sections.push(`PENGALAMAN KERJA:\n${cvExperience}`);
-                    if (cvEducation) sections.push(`PENDIDIKAN:\n${cvEducation}`);
-                    if (cvProjects) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects}`);
-                    if (cvOrganization) sections.push(`ORGANISASI:\n${cvOrganization}`);
-                    finalText = sections.join('\n\n');
+                    if (cvExperience.trim()) sections.push(`PENGALAMAN KERJA:\n${cvExperience.trim()}`);
+                    if (cvEducation.trim()) sections.push(`PENDIDIKAN:\n${cvEducation.trim()}`);
+                    if (cvProjects.trim()) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects.trim()}`);
+                    if (cvOrganization.trim()) sections.push(`ORGANISASI:\n${cvOrganization.trim()}`);
+
+                    // Pertahankan section keahlian / skills jika ada dari teks sebelumnya
+                    const skillsMatch = cvText.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:KEAHLIAN|KETERAMPILAN|SKILLS|TECHNICAL\s*SKILLS)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENDIDIKAN|EDUCATION|PENGALAMAN|EXPERIENCE|PROYEK|PROJECTS|ORGANISASI|ORGANIZATION|SERTIFIKASI|CERTIFICATIONS|DATA\s*PRIBADI)|$)/i);
+                    if (skillsMatch && skillsMatch[1].trim()) {
+                      sections.push(`KEAHLIAN & KETERAMPILAN:\n${skillsMatch[1].trim()}`);
+                    }
+
+                    // Pertahankan section sertifikasi jika ada dari teks sebelumnya
+                    const certMatch = cvText.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:SERTIFIKASI|CERTIFICATIONS)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENDIDIKAN|EDUCATION|PENGALAMAN|EXPERIENCE|PROYEK|PROJECTS|ORGANISASI|ORGANIZATION|KEAHLIAN|SKILLS|DATA\s*PRIBADI)|$)/i);
+                    if (certMatch && certMatch[1].trim()) {
+                      sections.push(`SERTIFIKASI:\n${certMatch[1].trim()}`);
+                    }
+
+                    const combined = sections.join('\n\n');
+                    if (combined.length >= 30) {
+                      finalText = combined;
+                    }
                   }
 
                   if (finalText.length < 30) {
