@@ -12,9 +12,12 @@ export const extractInput = z.object({
 });
 
 export const extractCvInput = z.object({
-  fileBase64: z.string().min(1, 'File base64 wajib ada'),
-  fileMimeType: z.string().min(1, 'Mime type wajib ada'),
+  text: z.string().max(25000).optional(),
+  fileBase64: z.string().optional(),
+  fileMimeType: z.string().optional(),
   fileName: z.string().optional(),
+}).refine(data => (data.text && data.text.length >= 10) || (data.fileBase64 && data.fileMimeType), {
+  message: 'Harap unggah file CV atau masukkan teks CV (minimal 10 karakter).'
 });
 
 export const reviewInput = z.object({

@@ -375,16 +375,28 @@ export default function Home() {
   }
 
   async function extractCvManual() {
-    if (!uploadedCvFile) {
-      setMessage('Harap upload atau paste file CV terlebih dahulu.');
+    if (!uploadedCvFile && cvText.trim().length < 15) {
+      setMessage('Harap upload file CV atau tempelkan teks CV (minimal 15 karakter) terlebih dahulu.');
       return;
     }
 
-    const r = await callAi('extract-cv', {
-      fileBase64: uploadedCvFile.base64,
-      fileMimeType: uploadedCvFile.mimeType,
-      fileName: uploadedCvFile.name,
-    });
+    const payload: {
+      text?: string;
+      fileBase64?: string;
+      fileMimeType?: string;
+      fileName?: string;
+    } = {};
+
+    if (uploadedCvFile) {
+      payload.fileBase64 = uploadedCvFile.base64;
+      payload.fileMimeType = uploadedCvFile.mimeType;
+      payload.fileName = uploadedCvFile.name;
+    }
+    if (cvText.trim()) {
+      payload.text = cvText.trim();
+    }
+
+    const r = await callAi('extract-cv', payload);
 
     if (r?.cv) {
       if (r.cv.cv_title) setCvLabel(r.cv.cv_title);
@@ -396,7 +408,7 @@ export default function Home() {
       if (r.cv.projects) setCvProjects(r.cv.projects);
       if (r.cv.organization) setCvOrganization(r.cv.organization);
       if (r.cv.cv_text) setCvText(r.cv.cv_text);
-      setMessage('Teks CV, Data Pribadi, Pendidikan, Pengalaman, Proyek, dan Organisasi berhasil diekstrak oleh AI!');
+      setMessage('✅ Teks CV berhasil diekstrak dan diterjemahkan otomatis ke Bahasa Indonesia oleh AI!');
     }
   }
 
@@ -1325,12 +1337,15 @@ export default function Home() {
 
           <div style={{ marginBottom: '1.25rem' }}>
             <button
-              disabled={busy || !uploadedCvFile}
+              disabled={busy || (!uploadedCvFile && cvText.trim().length < 15)}
               onClick={extractCvManual}
               style={{ width: '100%', padding: '0.85rem 1.25rem', fontSize: '1rem' }}
             >
-              {busy ? '⏳ Sedang Memproses CV dengan AI...' : '✨ Ekstrak & Analisis CV dengan Gemini AI'}
+              {busy ? '⏳ Sedang Memproses & Menerjemahkan CV...' : '✨ Ekstrak & Terjemahkan CV ke Bahasa Indonesia'}
             </button>
+            <p style={{ margin: '0.35rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              💡 <em>Jika CV Anda berbahasa Inggris, AI akan otomatis menterjemahkan deskripsi pekerjaan, pendidikan, dan proyek ke Bahasa Indonesia tanpa mengubah nama atau istilah teknologi teknis.</em>
+            </p>
           </div>
 
           <label>
