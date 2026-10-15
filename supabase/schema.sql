@@ -4,8 +4,10 @@ create table if not exists public.jobs (
  id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
  company_name text not null, role_title text not null, source_url text, description_text text,
  location text, salary_min numeric, salary_max numeric, currency text default 'IDR', deadline_at timestamptz,
+ is_deleted boolean not null default false,
  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
+alter table public.jobs add column if not exists is_deleted boolean not null default false;
 create table if not exists public.job_requirements (
  id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
  job_id uuid not null references public.jobs(id) on delete cascade,

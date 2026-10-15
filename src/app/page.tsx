@@ -16,6 +16,7 @@ type Job = {
   salary_max: number | null;
   currency: string | null;
   deadline_at: string | null;
+  is_deleted?: boolean | null;
   created_at: string;
 };
 
@@ -192,8 +193,9 @@ export default function Home() {
     suggestions: string[];
   } | null>(null);
 
-  // Filter
+  // Filter & Toggle Eyes (Soft Delete)
   const [search, setSearch] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false); // false = Eyes (hanya lowongan aktif), true = Eyes Off (semua termasuk soft delete)
 
   useEffect(() => {
     try {
@@ -598,6 +600,27 @@ export default function Home() {
     await refresh();
   }
 
+  async function toggleSoftDelete(jobId: string, deleteIt: boolean) {
+    if (!db || !user) return;
+    setBusy(true);
+    const { error } = await db
+      .from('jobs')
+      .update({ is_deleted: deleteIt })
+      .eq('id', jobId)
+      .eq('user_id', user.id);
+    setBusy(false);
+    if (error) {
+      setMessage('Gagal memperbarui status lowongan: ' + error.message);
+    } else {
+      setMessage(
+        deleteIt
+          ? '🗑️ Lowongan berhasil diarsipkan (soft delete). Aktifkan toggle Eyes Off di pojok kanan untuk melihatnya kembali.'
+          : '✅ Lowongan berhasil dipulihkan ke daftar aktif!'
+      );
+      await refresh();
+    }
+  }
+
   async function addAction(appId: string) {
     if (!actionTitle.trim() || !actionDue) {
       setMessage('Isi judul tindakan dan tenggat waktu.');
@@ -644,10 +667,12 @@ export default function Home() {
 
   const filteredJobs = useMemo(
     () =>
-      jobs.filter((j) =>
-        (j.company_name + ' ' + j.role_title).toLowerCase().includes(search.toLowerCase())
-      ),
-    [jobs, search]
+      jobs
+        .filter((j) => (showDeleted ? true : !j.is_deleted))
+        .filter((j) =>
+          (j.company_name + ' ' + j.role_title + ' ' + (j.location || '')).toLowerCase().includes(search.toLowerCase())
+        ),
+    [jobs, search, showDeleted]
   );
 
   const now = new Date().toISOString();
@@ -831,7 +856,7 @@ export default function Home() {
 
             <section className="card">
               <h2>💼 Lowongan Terbaru</h2>
-              {jobs.slice(0, 5).map((j) => {
+              {jobs.filter((j) => !j.is_deleted).slice(0, 5).map((j) => {
                 const latestApp = apps.filter((a) => a.job_id === j.id).at(-1);
                 return (
                   <div className="list-item" key={j.id}>
@@ -864,38 +889,176 @@ export default function Home() {
       {/* 2. DAFTAR LOWONGAN */}
       {tab === 'jobs' && (
         <section className="card">
-          <h2>Daftar Lowongan</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div>
+              <h2 style={{ margin: 0 }}>Daftar Lowongan</h2>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {showDeleted
+                  ? `Mode Eyes Off: Menampilkan semua (${filteredJobs.length}) lowongan, termasuk yang di-soft delete.`
+                  : `Mode Eyes: Menampilkan ${filteredJobs.length} lowongan aktif.`}
+              </p>
+            </div>
+
+            {/* Toggle Eyes / Eyes Off di Pojok Kanan */}
+            <button
+              type="button"
+              className="secondary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.55rem',
+                padding: '0.55rem 1rem',
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                borderRadius: 'var(--radius-sm)',
+                border: showDeleted ? '1px solid var(--accent-amber)' : '1px solid var(--brand-primary)',
+                background: showDeleted ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                color: showDeleted ? '#fbbf24' : '#34d399',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              title={
+                showDeleted
+                  ? 'Klik untuk kembali ke Mode Eyes (Hanya lowongan aktif)'
+                  : 'Klik untuk beralih ke Mode Eyes Off (Tampilkan semua termasuk yang dihapus)'
+              }
+              onClick={() => setShowDeleted(!showDeleted)}
+            >
+              {showDeleted ? (
+                <>
+                  <span style={{ fontSize: '1.2rem' }}>🙈</span>
+                  <span>Eyes Off (Semua + Terhapus)</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '1.2rem' }}>👁️</span>
+                  <span>Eyes (Hanya Aktif)</span>
+                </>
+              )}
+            </button>
+          </div>
+
           <input
             placeholder="🔍 Cari berdasarkan nama perusahaan atau posisi..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ marginBottom: '1.25rem' }}
           />
+
           {filteredJobs.map((j) => {
             const latestApp = apps.filter((a) => a.job_id === j.id).at(-1);
+            const isSoftDeleted = !!j.is_deleted;
+
             return (
-              <div className="list-item" key={j.id}>
+              <div
+                className="list-item"
+                key={j.id}
+                style={{
+                  opacity: isSoftDeleted ? 0.72 : 1,
+                  borderLeft: isSoftDeleted ? '4px solid var(--accent-rose)' : undefined,
+                  background: isSoftDeleted ? 'rgba(244, 63, 94, 0.04)' : undefined,
+                  transition: 'all 0.2s ease',
+                }}
+              >
                 <div className="list-item-content">
-                  <b>{j.company_name}</b> — <span style={{ color: '#fff' }}>{j.role_title}</span>
-                  <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <b style={{ textDecoration: isSoftDeleted ? 'line-through' : 'none' }}>
+                      {j.company_name}
+                    </b>
+                    {' — '}
+                    <span style={{ color: isSoftDeleted ? 'var(--text-muted)' : '#fff' }}>
+                      {j.role_title}
+                    </span>
+
+                    {isSoftDeleted && (
+                      <span
+                        className="badge"
+                        style={{
+                          background: 'rgba(244, 63, 94, 0.18)',
+                          color: '#fb7185',
+                          border: '1px solid rgba(244, 63, 94, 0.3)',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '0.15rem 0.5rem',
+                        }}
+                      >
+                        🗑️ Soft Deleted (Arsip)
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <span className={`badge badge-${latestApp?.status ?? 'saved'}`}>
                       {STAGE_NAMES[latestApp?.status ?? 'saved']}
                     </span>
                     {j.location && <small>📍 {j.location}</small>}
+                    {j.created_at && (
+                      <small style={{ color: 'var(--text-muted)' }}>
+                        🕒 {new Date(j.created_at).toLocaleDateString('id-ID')}
+                      </small>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedJobId(j.id);
-                    setTab('detail');
-                  }}
-                >
-                  Lihat Detail →
-                </button>
+
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => {
+                      setSelectedJobId(j.id);
+                      setTab('detail');
+                    }}
+                  >
+                    Lihat Detail →
+                  </button>
+
+                  {isSoftDeleted ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      style={{
+                        padding: '0.5rem 0.85rem',
+                        fontSize: '0.82rem',
+                        borderColor: 'var(--brand-primary)',
+                        color: 'var(--brand-primary-text)',
+                      }}
+                      title="Pulihkan lowongan ini ke daftar aktif"
+                      onClick={() => toggleSoftDelete(j.id, false)}
+                    >
+                      ♻️ Pulihkan
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="danger"
+                      style={{ padding: '0.5rem 0.85rem', fontSize: '0.82rem' }}
+                      title="Hapus lowongan ini (Soft Delete)"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Arsipkan/hapus (soft delete) lowongan "${j.company_name} - ${j.role_title}"?\n\nLowongan tidak dihapus permanen dan tetap bisa dilihat atau dipulihkan kembali melalui tombol toggle Eyes Off di pojok kanan.`
+                          )
+                        ) {
+                          toggleSoftDelete(j.id, true);
+                        }
+                      }}
+                    >
+                      🗑️ Hapus
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
-          {!filteredJobs.length && <p>Tidak ditemukan lowongan yang sesuai.</p>}
+
+          {!filteredJobs.length && (
+            <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
+              <p style={{ margin: 0, fontSize: '0.95rem' }}>Tidak ditemukan lowongan yang sesuai.</p>
+              {!showDeleted && jobs.some((j) => j.is_deleted) && (
+                <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--accent-amber)' }}>
+                  💡 Ada lowongan yang sedang diarsipkan. Klik tombol <b>"Eyes (Hanya Aktif)"</b> di pojok kanan atas untuk beralih ke <b>"Eyes Off"</b> dan melihat lowongan yang dihapus.
+                </p>
+              )}
+            </div>
+          )}
         </section>
       )}
 
