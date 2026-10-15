@@ -148,14 +148,9 @@ export default function Home() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Skill & Profil Data Form
-  const [profileName, setProfileName] = useState('');
-  const [profilePhone, setProfilePhone] = useState('');
-  const [profileEmail, setProfileEmail] = useState('');
-  const [skillLabel, setSkillLabel] = useState('');
+  // Skill Data Form (Hanya Nama Skill & Tingkat Penguasaan)
   const [skillName, setSkillName] = useState('');
   const [skillLevel, setSkillLevel] = useState<SkillProficiency>('used_in_project');
-  const [skillEvidence, setSkillEvidence] = useState('');
 
   // CV Form
   const [cvLabel, setCvLabel] = useState('CV Backend v1');
@@ -166,6 +161,7 @@ export default function Home() {
   const [cvEducation, setCvEducation] = useState('');
   const [cvProjects, setCvProjects] = useState('');
   const [cvOrganization, setCvOrganization] = useState('');
+  const [cvSkills, setCvSkills] = useState('');
   const [cvText, setCvText] = useState('');
   const [cvSelected, setCvSelected] = useState('');
   const [uploadedCvFile, setUploadedCvFile] = useState<{
@@ -410,6 +406,7 @@ export default function Home() {
       if (r.cv.education) setCvEducation(r.cv.education);
       if (r.cv.projects) setCvProjects(r.cv.projects);
       if (r.cv.organization) setCvOrganization(r.cv.organization);
+      if (r.cv.skills) setCvSkills(r.cv.skills);
       if (r.cv.cv_text) setCvText(r.cv.cv_text);
       setMessage('✅ Teks CV berhasil diekstrak dan diterjemahkan otomatis ke Bahasa Indonesia oleh AI!');
     }
@@ -417,7 +414,7 @@ export default function Home() {
 
   function parseCvFull(text: string) {
     if (!text) {
-      return { fullName: '', phone: '', email: '', experience: '', education: '', projects: '', organization: '' };
+      return { fullName: '', phone: '', email: '', experience: '', education: '', projects: '', organization: '', skills: '' };
     }
 
     let fullName = '';
@@ -427,6 +424,7 @@ export default function Home() {
     let education = '';
     let projects = '';
     let organization = '';
+    let skills = '';
 
     // 1. Ekstrak Email
     const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
@@ -477,12 +475,13 @@ export default function Home() {
     }
 
     // 4. Deteksi Section Headings Line by Line
-    type Sec = 'none' | 'exp' | 'edu' | 'proj' | 'org' | 'other';
+    type Sec = 'none' | 'exp' | 'edu' | 'proj' | 'org' | 'skills' | 'other';
     let cur: Sec = 'none';
     const expLines: string[] = [];
     const eduLines: string[] = [];
     const projLines: string[] = [];
     const orgLines: string[] = [];
+    const skillsLines: string[] = [];
 
     function normalizeHeading(line: string) {
       return line
@@ -502,7 +501,7 @@ export default function Home() {
       if (/^[0-9]+[.)]\s+[A-Za-z]/i.test(trimmed)) return true;
       if (/:\s*$/.test(trimmed) && trimmed.length < 50) return true;
       if (/^[A-Z0-9\s&/()\-–—]{3,50}$/.test(trimmed)) return true;
-      if (/^(?:Pengalaman(?:\s*Kerja|\s*Profesional)?|Riwayat\s*(?:Kerja|Pendidikan)|Pendidikan|Proyek(?:\s*&\s*Portofolio)?|Portofolio|Projects?|Education|Experience|Organisasi|Volunteer)(?:\s*\([^)]+\))?$/i.test(trimmed)) return true;
+      if (/^(?:Pengalaman(?:\s*Kerja|\s*Profesional)?|Riwayat\s*(?:Kerja|Pendidikan)|Pendidikan|Proyek(?:\s*&\s*Portofolio)?|Portofolio|Projects?|Education|Experience|Organisasi|Volunteer|Keahlian|Skills|Keterampilan)(?:\s*\([^)]+\))?$/i.test(trimmed)) return true;
 
       return false;
     }
@@ -524,8 +523,12 @@ export default function Home() {
       return /\b(?:ORGANISASI|PENGALAMAN\s*ORGANISASI|ORGANIZATION|VOLUNTEER|LEADERSHIP|AKTIVITAS\s*ORGANISASI)\b/i.test(h);
     }
 
+    function isSkillsHeading(h: string) {
+      return /\b(?:KEAHLIAN|KETERAMPILAN|SKILLS|TECHNICAL\s*SKILLS|HARD\s*SKILLS|KOMPETENSI|CORE\s*COMPETENCIES|BAHASA\s*PEMROGRAMAN)\b/i.test(h);
+    }
+
     function isOtherHeading(h: string) {
-      return /\b(?:DATA\s*PRIBADI|INFORMASI\s*PRIBADI|INFORMASI\s*KONTAK|PERSONAL\s*INFO|CONTACT|RINGKASAN|SUMMARY|TENTANG\s*SAYA|ABOUT\s*ME|KEAHLIAN|SKILLS|TECHNICAL\s*SKILLS|SERTIFIKASI|CERTIFICATIONS|BAHASA|LANGUAGES)\b/i.test(h);
+      return /\b(?:DATA\s*PRIBADI|INFORMASI\s*PRIBADI|INFORMASI\s*KONTAK|PERSONAL\s*INFO|CONTACT|RINGKASAN|SUMMARY|TENTANG\s*SAYA|ABOUT\s*ME|SERTIFIKASI|CERTIFICATIONS|BAHASA|LANGUAGES)\b/i.test(h);
     }
 
     for (const line of lines) {
@@ -535,6 +538,7 @@ export default function Home() {
         else if (cur === 'edu') eduLines.push('');
         else if (cur === 'proj') projLines.push('');
         else if (cur === 'org') orgLines.push('');
+        else if (cur === 'skills') skillsLines.push('');
         continue;
       }
 
@@ -544,6 +548,7 @@ export default function Home() {
         if (isExperienceHeading(norm)) { cur = 'exp'; continue; }
         if (isEducationHeading(norm)) { cur = 'edu'; continue; }
         if (isProjectHeading(norm)) { cur = 'proj'; continue; }
+        if (isSkillsHeading(norm)) { cur = 'skills'; continue; }
         if (isOtherHeading(norm)) { cur = 'other'; continue; }
       }
 
@@ -551,12 +556,14 @@ export default function Home() {
       else if (cur === 'edu') eduLines.push(line);
       else if (cur === 'proj') projLines.push(line);
       else if (cur === 'org') orgLines.push(line);
+      else if (cur === 'skills') skillsLines.push(line);
     }
 
     experience = expLines.join('\n').trim();
     education = eduLines.join('\n').trim();
     projects = projLines.join('\n').trim();
     organization = orgLines.join('\n').trim();
+    skills = skillsLines.join('\n').trim();
 
     // Fallback block regex jika line-by-line heading belum match
     if (!experience) {
@@ -575,8 +582,12 @@ export default function Home() {
       const m = text.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:ORGANISASI|ORGANIZATION|VOLUNTEER)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENGALAMAN|EXPERIENCE|PENDIDIKAN|EDUCATION|PROYEK|PROJECTS|KEAHLIAN|SKILLS|DATA\s*PRIBADI)|$)/i);
       if (m) organization = m[1].trim();
     }
+    if (!skills) {
+      const m = text.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:KEAHLIAN|KETERAMPILAN|SKILLS|TECHNICAL\s*SKILLS)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENDIDIKAN|EDUCATION|PENGALAMAN|EXPERIENCE|PROYEK|PROJECTS|ORGANISASI|ORGANIZATION|SERTIFIKASI|CERTIFICATIONS|DATA\s*PRIBADI)|$)/i);
+      if (m) skills = m[1].trim();
+    }
 
-    return { fullName, phone, email, experience, education, projects, organization };
+    return { fullName, phone, email, experience, education, projects, organization, skills };
   }
 
   function loadCvIntoForm(c: Cv) {
@@ -592,6 +603,7 @@ export default function Home() {
     setCvEducation(parsed.education);
     setCvProjects(parsed.projects);
     setCvOrganization(parsed.organization);
+    setCvSkills(parsed.skills);
 
     setMessage(`✏️ Mode Edit Aktif: Versi "${c.label}" berhasil dimuat ke seluruh kolom form.`);
 
@@ -610,9 +622,42 @@ export default function Home() {
     setCvEducation('');
     setCvProjects('');
     setCvOrganization('');
+    setCvSkills('');
     setCvText('');
     setUploadedCvFile(null);
     if (cvFileInputRef.current) cvFileInputRef.current.value = '';
+  }
+
+  async function syncCvSkillsToProfile(skillsInput: string) {
+    if (!db || !user || !skillsInput.trim()) return;
+
+    // Bersihkan dan pisahkan berdasarkan koma, titik koma, bullet points, atau baris baru
+    const rawList = skillsInput
+      .split(/[,;\n\r•\-–—|]|\band\b|\bdan\b/gi)
+      .map((s) => s.replace(/^[*\s_:#]+|[*\s_:#]+$/g, '').trim())
+      .filter((s) => s.length >= 2 && s.length <= 50 && !/^(?:keahlian|skills|keterampilan|technical|soft|hard|tools|frameworks?)$/i.test(s));
+
+    // Hapus duplikat secara case-insensitive
+    const uniqueSkills: string[] = [];
+    const seen = new Set<string>();
+    for (const s of rawList) {
+      const lower = s.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        uniqueSkills.push(s);
+      }
+    }
+
+    if (uniqueSkills.length === 0) return;
+
+    // Simpan ke tabel user_skills (default status: used_at_work)
+    const records = uniqueSkills.map((name) => ({
+      user_id: user.id,
+      skill_name: name,
+      proficiency: 'used_at_work' as SkillProficiency,
+    }));
+
+    await db.from('user_skills').upsert(records, { onConflict: 'user_id,skill_name', ignoreDuplicates: true });
   }
 
   // Support Paste (Ctrl + V) from clipboard anywhere on the page
@@ -1507,53 +1552,15 @@ export default function Home() {
       {tab === 'skills' && (
         <section className="card">
           <h2>⚡ Profil Keterampilan (User Skills)</h2>
-          <p style={{ marginBottom: '1.25rem' }}>
-            Kelola skill pribadi Anda beserta bukti pengalaman. Skill dengan status 'Sedang Belajar' tidak
-            dihitung sebagai kecocokan otomatis pada skor lowongan.
+          <p style={{ marginBottom: '1.25rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Kelola daftar keahlian dan tingkat penguasaan Anda. Keterampilan ini digunakan untuk menghitung skor kecocokan lowongan kerja, dan dapat diisi manual di sini atau disinkronkan otomatis saat Anda menyimpan Versi CV.
           </p>
 
-          <label>
-            Label / Kategori Profil
-            <input
-              placeholder="Contoh: Profil Utama / Software Engineer"
-              value={skillLabel}
-              onChange={(e) => setSkillLabel(e.target.value)}
-            />
-          </label>
-
-          <div className="formgrid" style={{ marginBottom: '1.25rem' }}>
-            <label>
-              Nama
-              <input
-                placeholder="Contoh: Budi Santoso"
-                value={profileName}
-                onChange={(e) => setProfileName(e.target.value)}
-              />
-            </label>
-            <label>
-              Nomor Telepon
-              <input
-                placeholder="Contoh: 081234567890"
-                value={profilePhone}
-                onChange={(e) => setProfilePhone(e.target.value)}
-              />
-            </label>
-            <label>
-              Gmail
-              <input
-                type="email"
-                placeholder="Contoh: budi.santoso@gmail.com"
-                value={profileEmail}
-                onChange={(e) => setProfileEmail(e.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="formgrid" style={{ marginBottom: '1.5rem' }}>
+          <div className="formgrid" style={{ marginBottom: '1.25rem', gridTemplateColumns: '2fr 1.5fr' }}>
             <label>
               Nama Skill
               <input
-                placeholder="Contoh: PostgreSQL, Docker, TypeScript"
+                placeholder="Contoh: PostgreSQL, Docker, TypeScript, Flutter"
                 value={skillName}
                 onChange={(e) => setSkillName(e.target.value)}
               />
@@ -1569,56 +1576,113 @@ export default function Home() {
                 <option value="used_at_work">Pernah Dipakai di Kerja (Used at Work)</option>
               </select>
             </label>
-            <label>
-              Bukti Pengalaman (Opsional)
-              <input
-                placeholder="Contoh: Optimasi query di project XYZ"
-                value={skillEvidence}
-                onChange={(e) => setSkillEvidence(e.target.value)}
-              />
-            </label>
           </div>
 
           <button
             onClick={async () => {
-              if (skillName.trim()) {
-                const ok = await save('user_skills', {
-                  skill_name: skillName.trim(),
-                  proficiency: skillLevel,
-                  evidence_text: skillEvidence.trim() || null,
-                });
-                if (ok) {
-                  setSkillName('');
-                  setSkillEvidence('');
-                }
+              if (!skillName.trim()) {
+                setMessage('Nama skill tidak boleh kosong.');
+                return;
+              }
+              const ok = await save('user_skills', {
+                skill_name: skillName.trim(),
+                proficiency: skillLevel,
+              });
+              if (ok) {
+                setSkillName('');
+                setMessage(`✅ Skill "${skillName.trim()}" berhasil ditambahkan ke profil!`);
               }
             }}
           >
             + Tambah Skill ke Profil
           </button>
 
-          <div style={{ marginTop: '1.75rem' }}>
+          <hr style={{ margin: '2rem 0 1.5rem', borderColor: 'var(--border-subtle)' }} />
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0 }}>📋 Daftar Skill Tersimpan ({skills.length})</h3>
+            </div>
+
             {skills.map((s) => (
-              <div className="list-item" key={s.id}>
+              <div className="list-item" key={s.id} style={{ alignItems: 'center', padding: '0.85rem 1.15rem' }}>
                 <div className="list-item-content">
-                  <b>{s.skill_name}</b>
-                  <p>
-                    Tingkat: <span style={{ color: 'var(--brand-primary-text)' }}>{s.proficiency}</span>
-                    {s.evidence_text && ` · Bukti: ${s.evidence_text}`}
-                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <b style={{ fontSize: '1rem', color: 'var(--text-main)' }}>{s.skill_name}</b>
+                    <span
+                      className="badge"
+                      style={{
+                        background:
+                          s.proficiency === 'used_at_work'
+                            ? 'rgba(16, 185, 129, 0.15)'
+                            : s.proficiency === 'used_in_project'
+                            ? 'rgba(59, 130, 246, 0.15)'
+                            : 'rgba(245, 158, 11, 0.15)',
+                        color:
+                          s.proficiency === 'used_at_work'
+                            ? '#34d399'
+                            : s.proficiency === 'used_in_project'
+                            ? '#60a5fa'
+                            : '#fbbf24',
+                        fontWeight: 600,
+                        fontSize: '0.78rem',
+                        padding: '0.2rem 0.6rem',
+                        border: `1px solid ${
+                          s.proficiency === 'used_at_work'
+                            ? 'rgba(16, 185, 129, 0.3)'
+                            : s.proficiency === 'used_in_project'
+                            ? 'rgba(59, 130, 246, 0.3)'
+                            : 'rgba(245, 158, 11, 0.3)'
+                        }`,
+                      }}
+                    >
+                      {s.proficiency === 'used_at_work'
+                        ? '💼 Pernah Dipakai di Kerja'
+                        : s.proficiency === 'used_in_project'
+                        ? '🚀 Pernah Dipakai di Proyek'
+                        : '📚 Sedang Belajar'}
+                    </span>
+                  </div>
                 </div>
-                <button
-                  className="danger"
-                  onClick={async () => {
-                    await db.from('user_skills').delete().eq('id', s.id);
-                    await refresh();
-                  }}
-                >
-                  Hapus
-                </button>
+
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <select
+                    value={s.proficiency}
+                    style={{ fontSize: '0.8rem', padding: '0.3rem 0.5rem', width: 'auto' }}
+                    onChange={async (e) => {
+                      const newLevel = e.target.value as SkillProficiency;
+                      if (!db) return;
+                      setBusy(true);
+                      await db.from('user_skills').update({ proficiency: newLevel }).eq('id', s.id);
+                      setBusy(false);
+                      await refresh();
+                    }}
+                  >
+                    <option value="learning">Sedang Belajar</option>
+                    <option value="used_in_project">Di Proyek</option>
+                    <option value="used_at_work">Di Kerja</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    className="danger"
+                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                    onClick={async () => {
+                      if (!confirm(`Hapus skill "${s.skill_name}" dari profil?`)) return;
+                      await db.from('user_skills').delete().eq('id', s.id);
+                      await refresh();
+                    }}
+                  >
+                    Hapus
+                  </button>
+                </div>
               </div>
             ))}
-            {!skills.length && <p>Belum ada skill yang ditambahkan ke profil Anda.</p>}
+            {!skills.length && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                Belum ada skill yang ditambahkan ke profil Anda. Tambahkan melalui form di atas atau simpan Versi CV Anda.
+              </p>
+            )}
           </div>
         </section>
       )}
@@ -1819,6 +1883,7 @@ export default function Home() {
                         if (parsed.education) setCvEducation(parsed.education);
                         if (parsed.projects) setCvProjects(parsed.projects);
                         if (parsed.organization) setCvOrganization(parsed.organization);
+                        if (parsed.skills) setCvSkills(parsed.skills);
                         setMessage('⚡ Seluruh kolom berhasil dimuat dari teks CV!');
                       }}
                     >
@@ -1996,6 +2061,19 @@ export default function Home() {
                   onChange={(e) => setCvOrganization(e.target.value)}
                 />
               </label>
+
+              <label>
+                🛠️ Keahlian & Keterampilan Teknis (Skills)
+                <textarea
+                  rows={4}
+                  placeholder="Contoh: React, Next.js, Node.js, TypeScript, PostgreSQL, Docker, Flutter (pisahkan dengan koma atau baris baru)"
+                  value={cvSkills}
+                  onChange={(e) => setCvSkills(e.target.value)}
+                />
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.25rem' }}>
+                  💡 Seluruh skill yang diisi di sini akan otomatis disinkronkan ke menu <b>Profil Skill</b> saat CV disimpan.
+                </span>
+              </label>
             </div>
 
             <label>
@@ -2017,13 +2095,14 @@ export default function Home() {
                         if (parsed.education) setCvEducation(parsed.education);
                         if (parsed.projects) setCvProjects(parsed.projects);
                         if (parsed.organization) setCvOrganization(parsed.organization);
+                        if (parsed.skills) setCvSkills(parsed.skills);
                         setMessage('⚡ Seluruh data berhasil diparsing dan disebar ke kolom-kolom di atas!');
                       }}
                     >
                       ⚡ Ekstrak ke Kolom di Atas
                     </button>
                   )}
-                  {(cvExperience || cvEducation || cvProjects || cvOrganization || cvFullName) && (
+                  {(cvExperience || cvEducation || cvProjects || cvOrganization || cvSkills || cvFullName) && (
                     <button
                       type="button"
                       className="secondary"
@@ -2041,6 +2120,7 @@ export default function Home() {
                         if (cvEducation) sections.push(`PENDIDIKAN:\n${cvEducation}`);
                         if (cvProjects) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects}`);
                         if (cvOrganization) sections.push(`ORGANISASI:\n${cvOrganization}`);
+                        if (cvSkills) sections.push(`KEAHLIAN & KETERAMPILAN:\n${cvSkills}`);
                         setCvText(sections.join('\n\n'));
                       }}
                     >
@@ -2062,7 +2142,7 @@ export default function Home() {
                 disabled={busy}
                 onClick={async () => {
                   let finalText = cvText;
-                  const hasModularFields = !!(cvFullName || cvPhone || cvEmail || cvExperience || cvEducation || cvProjects || cvOrganization);
+                  const hasModularFields = !!(cvFullName || cvPhone || cvEmail || cvExperience || cvEducation || cvProjects || cvOrganization || cvSkills);
 
                   // Prioritaskan konten dari kolom-kolom modular jika diisi/diedit oleh pengguna
                   if (hasModularFields) {
@@ -2078,12 +2158,7 @@ export default function Home() {
                     if (cvEducation.trim()) sections.push(`PENDIDIKAN:\n${cvEducation.trim()}`);
                     if (cvProjects.trim()) sections.push(`PROYEK & PORTOFOLIO:\n${cvProjects.trim()}`);
                     if (cvOrganization.trim()) sections.push(`ORGANISASI:\n${cvOrganization.trim()}`);
-
-                    // Pertahankan section keahlian / skills jika ada dari teks sebelumnya
-                    const skillsMatch = cvText.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:KEAHLIAN|KETERAMPILAN|SKILLS|TECHNICAL\s*SKILLS)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENDIDIKAN|EDUCATION|PENGALAMAN|EXPERIENCE|PROYEK|PROJECTS|ORGANISASI|ORGANIZATION|SERTIFIKASI|CERTIFICATIONS|DATA\s*PRIBADI)|$)/i);
-                    if (skillsMatch && skillsMatch[1].trim()) {
-                      sections.push(`KEAHLIAN & KETERAMPILAN:\n${skillsMatch[1].trim()}`);
-                    }
+                    if (cvSkills.trim()) sections.push(`KEAHLIAN & KETERAMPILAN:\n${cvSkills.trim()}`);
 
                     // Pertahankan section sertifikasi jika ada dari teks sebelumnya
                     const certMatch = cvText.match(/(?:^|\n)\s*[#*_\s\-•>0-9.)]*(?:SERTIFIKASI|CERTIFICATIONS)[^\n]*\n([\s\S]*?)(?=\n\s*[#*_\s\-•>0-9.)]*(?:PENDIDIKAN|EDUCATION|PENGALAMAN|EXPERIENCE|PROYEK|PROJECTS|ORGANISASI|ORGANIZATION|KEAHLIAN|SKILLS|DATA\s*PRIBADI)|$)/i);
@@ -2124,7 +2199,11 @@ export default function Home() {
                     if (error) {
                       setMessage('Gagal memperbarui CV: ' + error.message);
                     } else {
-                      setMessage(`✅ Versi CV "${cvLabel}" berhasil diperbarui!`);
+                      const skillsToSync = cvSkills.trim() || parseCvFull(finalText).skills;
+                      if (skillsToSync) {
+                        await syncCvSkillsToProfile(skillsToSync);
+                      }
+                      setMessage(`✅ Versi CV "${cvLabel}" berhasil diperbarui & disinkronkan ke Profil Skill!`);
                       resetCvForm();
                       await refresh();
                     }
@@ -2135,7 +2214,13 @@ export default function Home() {
                       content_text: finalText,
                     });
                     if (ok) {
+                      const skillsToSync = cvSkills.trim() || parseCvFull(finalText).skills;
+                      if (skillsToSync) {
+                        await syncCvSkillsToProfile(skillsToSync);
+                      }
+                      setMessage(`✅ Versi CV "${cvLabel}" berhasil disimpan & disinkronkan ke Profil Skill!`);
                       resetCvForm();
+                      await refresh();
                     }
                   }
                 }}

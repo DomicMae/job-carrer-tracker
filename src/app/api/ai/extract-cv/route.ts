@@ -49,7 +49,8 @@ PANDUAN EKSTRAKSI CV PER BAGIAN:
    - Peran / Jabatan: [Jabatan dalam Bahasa Indonesia]
    - Kontribusi / Program kerja: [penjelasan singkat dalam Bahasa Indonesia]
    (Pisahkan antar organisasi dengan satu baris kosong).
-9. cv_text: TULISKAN KEMBALI SELURUH ISI TEKS CV secara lengkap, bersih, dan berformat profesional DALAM BAHASA INDONESIA menggabungkan semua data pribadi, pengalaman kerja, pendidikan, skill, sertifikasi, proyek, dan organisasi dengan heading dan bullet points rapi.
+9. skills: Rangkuman seluruh keahlian, skill teknis, bahasa pemrograman, framework, tools, database, dan teknologi yang dikuasai kandidat dalam bentuk daftar nama skill dipisahkan koma (contoh: "React, Next.js, Node.js, TypeScript, PostgreSQL, Docker, Git, REST API").
+10. cv_text: TULISKAN KEMBALI SELURUH ISI TEKS CV secara lengkap, bersih, dan berformat profesional DALAM BAHASA INDONESIA menggabungkan semua data pribadi, pengalaman kerja, pendidikan, skill, sertifikasi, proyek, dan organisasi dengan heading dan bullet points rapi.
 
 PENTING: Kembalikan jawaban HANYA BERUPA SATU OBJECT JSON TUNGGAL dengan struktur:
 {
@@ -61,6 +62,7 @@ PENTING: Kembalikan jawaban HANYA BERUPA SATU OBJECT JSON TUNGGAL dengan struktu
   "education": "string teks pendidikan bahasa indonesia atau null",
   "projects": "string teks proyek bahasa indonesia atau null",
   "organization": "string teks organisasi bahasa indonesia atau null",
+  "skills": "string daftar skill teknis dipisahkan koma atau null",
   "cv_text": "string teks lengkap isi CV bahasa indonesia berformat rapi"
 }`;
 

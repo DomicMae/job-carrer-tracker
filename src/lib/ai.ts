@@ -55,6 +55,7 @@ export const extractedCv = z.object({
   work_experience: z.string().nullable().optional(),
   projects: z.string().nullable().optional(),
   organization: z.string().nullable().optional(),
+  skills: z.string().nullable().optional(),
   cv_text: z.string().min(10, 'Teks CV tidak boleh kosong')
 });
 
